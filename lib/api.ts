@@ -1,7 +1,19 @@
 import { apiClient, ApiClientError } from './apiClient';
-import { Product, Order, User } from './types';
+import { Product, Order } from './types';
 
 // ============= ADDITIONAL TYPE DEFINITIONS =============
+
+export interface User {
+  id: string;
+  email: string;
+  name?: string;
+  phone?: string;
+  role: string;
+  tier: string;
+  ageVerified?: boolean;
+  emailVerified?: boolean;
+  createdAt: string;
+}
 
 export interface AuthResponse {
   user: User;

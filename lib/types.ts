@@ -1,55 +1,42 @@
 export type Product = {
-  id: string; // Changed from number to string to match UUID
+  id: number;
   name: string;
   brand: string;
   price: number;
   stock: number;
-  status?: string; // Optional in backend response sometimes
+  status: string;
   margin?: number;
   rating?: number;
-  reviews?: any[]; // Prisma include
+  reviews?: number;
   category: string;
   volume: string;
   abv: string;
-  desc?: string; // Optional
-  description?: string; // Backend uses description
-  image?: string; // Backend uses images[] and thumbnail
-  thumbnail?: string;
-  images?: string[];
+  desc: string;
+  image: string;
   tags: string[];
-  time?: string;
-  isActive?: boolean;
+  time: string;
 };
 
 export type Address = {
-  id: string; // UUID
+  id: number;
   type: string;
-  text?: string; // Frontend legacy
-  street?: string; // Backend
-  unit?: string;
-  postalCode?: string;
+  text: string;
   isDefault: boolean;
 };
 
 export type Order = {
   id: string;
-  date?: string; // Frontend legacy
-  createdAt?: string; // Backend
+  date: string;
   total: number;
-  items: any; // Simplified for now
+  items: string;
   status: string;
-  customer?: string; // For admin view
-  channel?: string;
-  placed?: string;
 };
 
 export type User = {
-  id?: string;
   name: string;
   phone: string;
   email: string;
   tier: string;
   addresses: Address[];
   orders: Order[];
-  role?: string;
 };

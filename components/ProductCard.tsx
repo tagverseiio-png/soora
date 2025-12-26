@@ -1,6 +1,5 @@
 import { Minus, Plus } from 'lucide-react';
 import { Product } from '@/lib/types';
-import ProductImage from './ProductImage';
 
 type ProductCardProps = {
   product: Product;
@@ -31,10 +30,10 @@ export default function ProductCard({ product, count, onAdd, onRemove }: Product
     <>
     <div className="md:hidden py-6 border-b border-gray-100 last:border-0 flex gap-5 items-start">
         <div className="w-28 h-36 bg-[#F9F9F9] rounded-[4px] overflow-hidden flex-shrink-0 relative shadow-sm">
-          <ProductImage 
-            category={product.category.toLowerCase()}
+          <img 
+            src={product.images?.[0] || '/placeholder.png'}
             alt={product.name}
-            className="w-full h-full"
+            className="w-full h-full object-cover"
           />
         </div>
         <div className="flex-1 min-h-[128px] flex flex-col justify-between py-1">
@@ -55,10 +54,10 @@ export default function ProductCard({ product, count, onAdd, onRemove }: Product
 
     <div className="hidden md:flex flex-col bg-white rounded-[16px] overflow-hidden shadow-[0_20px_40px_-15px_rgba(0,0,0,0.05)] hover:shadow-[0_25px_50px_-12px_rgba(0,0,0,0.1)] transition-all duration-500 group cursor-pointer h-full border border-gray-50">
         <div className="relative aspect-[3/4] w-full bg-[#FAFAFA] flex items-center justify-center overflow-hidden">
-          <ProductImage 
-            category={product.category.toLowerCase()}
+          <img 
+            src={product.images?.[0] || '/placeholder.png'}
             alt={product.name}
-            className="w-full h-full group-hover:scale-105 transition-all duration-700 ease-out"
+            className="w-full h-full object-cover group-hover:scale-105 transition-all duration-700 ease-out"
           />
              {product.tags.includes("Bestseller") && (
                 <span className="absolute top-4 left-4 text-[10px] font-bold uppercase tracking-widest text-[#1d1d1f] bg-white/90 backdrop-blur-sm px-3 py-1.5 rounded-full shadow-sm">Bestseller</span>

@@ -45,13 +45,14 @@ const apiLimiter = rateLimit({
 });
 const authLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
-  max: 5,
+  max: 50, // Increased for development
   standardHeaders: true,
   legacyHeaders: false,
 });
 app.use('/api', apiLimiter);
-app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
+// Increase body size limit to 10MB for product images
+app.use(express.json({ limit: '10mb' }));
+app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
 // Health check
 app.get('/health', (req: Request, res: Response) => {

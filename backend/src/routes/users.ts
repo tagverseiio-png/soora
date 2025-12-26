@@ -217,4 +217,37 @@ router.delete(
   }
 );
 
+// Get all users (Admin)
+router.get(
+  '/admin/list',
+  authenticate,
+  async (req: AuthRequest, res: Response) => {
+  try {
+    // Check if user is admin
+    if (req.user!.role !== 'ADMIN') {
+      return res.status(403).json({ error: 'Admin access required' });
+    }
+
+    const users = await prisma.user.findMany({
+      select: {
+        id: true,
+        email: true,
+        name: true,
+        phone: true,
+        role: true,
+        tier: true,
+        ageVerified: true,
+        emailVerified: true,
+        createdAt: true,
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+
+    res.json(users);
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+  }
+);
+
 export default router;

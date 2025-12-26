@@ -88,21 +88,28 @@ router.post('/login', validators.login, async (req: Request, res: Response) => {
     }
 
     const { email, password } = req.body;
+    console.log('Login attempt:', { email, passwordLength: password?.length });
 
     // Find user
     const user = await prisma.user.findUnique({ where: { email } });
+    console.log('User found:', !!user, user?.email);
     if (!user) {
+      console.log('User not found for email:', email);
       return res.status(401).json({ error: 'Invalid credentials' });
     }
 
     // Check if active
     if (!user.isActive) {
+      console.log('User is inactive');
       return res.status(403).json({ error: 'Account is deactivated' });
     }
 
     // Verify password
+    console.log('Verifying password...');
     const isValidPassword = await bcrypt.compare(password, user.password);
+    console.log('Password valid:', isValidPassword);
     if (!isValidPassword) {
+      console.log('Invalid password for user:', email);
       return res.status(401).json({ error: 'Invalid credentials' });
     }
 
@@ -118,6 +125,7 @@ router.post('/login', validators.login, async (req: Request, res: Response) => {
 
     res.json({ user: userWithoutPassword, token });
   } catch (error: any) {
+    console.error('Login error:', error);
     res.status(500).json({ error: error.message });
   }
 });

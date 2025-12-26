@@ -15,6 +15,7 @@ interface ProductQuery {
   limit?: string;
   sortBy?: string;
   order?: 'asc' | 'desc';
+  includeInactive?: string;
 }
 
 // Get all products with filters
@@ -29,12 +30,18 @@ router.get('/', validators.pagination, async (req: Request<unknown, unknown, unk
       page = 1, 
       limit = 20,
       sortBy = 'createdAt',
-      order = 'desc'
+      order = 'desc',
+      includeInactive = 'false'
     } = req.query;
 
     const skip = (Number(page) - 1) * Number(limit);
 
-    const where: any = { isActive: true };
+    const where: any = {};
+    
+    // Only filter by isActive if not including inactive products
+    if (includeInactive !== 'true') {
+      where.isActive = true;
+    }
 
     if (category && category !== 'All') {
       where.category = category;
@@ -58,30 +65,16 @@ router.get('/', validators.pagination, async (req: Request<unknown, unknown, unk
       ];
     }
 
-    // Simple cache based on query string
-    const cacheKey = `products:list:${JSON.stringify({ where, skip, limit, sortBy, order })}`;
-    const cached = await cache.get<{ products: any[]; total: number }>(cacheKey);
-
-    let products: any[];
-    let total: number;
-
-    if (cached) {
-      products = cached.products;
-      total = cached.total;
-    } else {
-      const result = await Promise.all([
-        prisma.product.findMany({
-          where,
-          skip,
-          take: Number(limit),
-          orderBy: { [sortBy as string]: order },
-        }),
-        prisma.product.count({ where }),
-      ]);
-      products = result[0];
-      total = result[1];
-      await cache.set(cacheKey, { products, total }, 300);
-    }
+    // Always fetch fresh data to reflect admin changes immediately
+    const [products, total] = await Promise.all([
+      prisma.product.findMany({
+        where,
+        skip,
+        take: Number(limit),
+        orderBy: { [sortBy as string]: order },
+      }),
+      prisma.product.count({ where }),
+    ]);
 
     res.json({
       products,
@@ -125,6 +118,123 @@ router.get('/:id', async (req: Request<{ id: string }>, res: Response) => {
     });
 
     res.json(product);
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Create product (Admin)
+router.post('/', async (req: Request, res: Response) => {
+  try {
+    const { name, category, price, stock, images, brand, volume, abv, description, tags } = req.body;
+
+    if (!name || !category) {
+      return res.status(400).json({ error: 'Name and category are required' });
+    }
+
+    // Generate unique slug
+    let baseSlug = name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+    let slug = baseSlug;
+    let counter = 1;
+    
+    // Check if slug exists and make it unique
+    while (await prisma.product.findUnique({ where: { slug } })) {
+      slug = `${baseSlug}-${counter}`;
+      counter++;
+    }
+
+    const product = await prisma.product.create({
+      data: {
+        name,
+        category,
+        price: Number(price) || 0,
+        stock: Number(stock) || 0,
+        images: images || ['/placeholder.png'],
+        brand: brand || 'Soora',
+        volume: volume || 'BOT',
+        abv: abv || '0%',
+        description: description || '',
+        tags: tags || [],
+        slug,
+        isActive: true,
+      },
+    });
+
+    res.status(201).json(product);
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Update product (Admin)
+router.put('/:id', async (req: Request, res: Response) => {
+  try {
+    const { name, category, price, stock, images, brand, volume, abv, description, tags } = req.body;
+
+    const updateData: any = {
+      ...(category && { category }),
+      ...(price !== undefined && { price: Number(price) }),
+      ...(stock !== undefined && { stock: Number(stock) }),
+      ...(images && { images }),
+      ...(brand && { brand }),
+      ...(volume && { volume }),
+      ...(abv && { abv }),
+      ...(description !== undefined && { description }),
+      ...(tags && { tags }),
+    };
+
+    // If name is being updated, regenerate slug
+    if (name) {
+      let baseSlug = name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+      let slug = baseSlug;
+      let counter = 1;
+      
+      // Check if slug exists (excluding current product)
+      while (await prisma.product.findFirst({ 
+        where: { 
+          slug,
+          NOT: { id: req.params.id }
+        } 
+      })) {
+        slug = `${baseSlug}-${counter}`;
+        counter++;
+      }
+      
+      updateData.name = name;
+      updateData.slug = slug;
+    }
+
+    const product = await prisma.product.update({
+      where: { id: req.params.id },
+      data: updateData,
+    });
+
+    res.json(product);
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Delete product (Admin)
+// Delete product permanently (Admin) with cascading cleanup
+router.delete('/:id', async (req: Request, res: Response) => {
+  try {
+    const productId = req.params.id;
+
+    const [, , , productResult] = await prisma.$transaction([
+      // Remove dependent records to satisfy foreign keys
+      prisma.orderItem.deleteMany({ where: { productId } }),
+      prisma.cartItem.deleteMany({ where: { productId } }),
+      prisma.review.deleteMany({ where: { productId } }),
+      // Finally delete the product (deleteMany avoids throwing if not found)
+      prisma.product.deleteMany({ where: { id: productId } }),
+    ]);
+
+    if (!productResult.count) {
+      return res.status(404).json({ error: 'Product not found' });
+    }
+
+    res.json({ message: 'Product deleted permanently' });
   } catch (error: any) {
     res.status(500).json({ error: error.message });
   }

@@ -1,15 +1,16 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { ShoppingBag, Search, User, Home, Clock, ChevronDown, ArrowRight, Package, LogOut } from 'lucide-react';
 import LandingPage from '@/components/LandingPage';
 import ProductCard from '@/components/ProductCard';
 import Overlay from '@/components/Overlay';
 import SlideToPay from '@/components/SlideToPay';
-import { PRODUCTS, MOCK_USER, CATEGORIES } from '@/lib/data';
+import { CATEGORIES } from '@/lib/data';
 import { Product } from '@/lib/types';
 import { useAuth } from '@/lib/AuthContext';
+import { apiClient } from '@/lib/apiClient';
 import HeroImage from '@/components/HeroImage';
 
 export default function SooraApp() {
@@ -20,8 +21,33 @@ export default function SooraApp() {
     const [isProfileOpen, setIsProfileOpen] = useState(false);
     const [showShop, setShowShop] = useState(false);
     const [activeCategory, setActiveCategory] = useState("All");
+    const [products, setProducts] = useState<Product[]>([]);
+    const [loading, setLoading] = useState(true);
 
-    const getItemCount = (productId: number) => cart.filter(item => item.id === productId).length;
+    // Fetch products from backend
+    useEffect(() => {
+        const fetchProducts = async () => {
+            try {
+                const response = await apiClient.request('/products');
+                if (response && Array.isArray(response)) {
+                    setProducts(response);
+                } else if (response && response.products) {
+                    setProducts(response.products);
+                }
+            } catch (error) {
+                console.error('Failed to fetch products:', error);
+                setProducts([]);
+            } finally {
+                setLoading(false);
+            }
+        };
+
+        if (showShop) {
+            fetchProducts();
+        }
+    }, [showShop]);
+
+    const getItemCount = (productId: string) => cart.filter(item => item.id === productId).length;
     const addToCart = (product: Product) => setCart([...cart, product]);
     const removeFromCart = (product: Product) => {
         const index = cart.findIndex(item => item.id === product.id);
@@ -33,10 +59,10 @@ export default function SooraApp() {
     };
     const cartTotal = cart.reduce((acc, item) => acc + item.price, 0);
 
-    const featuredProducts = PRODUCTS.filter(p => p.tags.includes("Featured") || p.tags.includes("Bestseller"));
+    const featuredProducts = products.filter(p => p.isFeatured === true);
     const displayedProducts = activeCategory === 'All'
-        ? PRODUCTS
-        : PRODUCTS.filter(p => p.category === activeCategory);
+        ? products
+        : products.filter(p => p.category === activeCategory);
 
     const displayName = user?.name || user?.email || 'User';
     const userInitial = displayName.charAt(0).toUpperCase();
@@ -317,33 +343,16 @@ export default function SooraApp() {
                                     <h4 className="text-[17px] font-semibold text-[#1d1d1f]">Addresses</h4>
                                     <button className="text-[#0071e3] text-[13px] font-medium">Edit</button>
                                 </div>
-                                <div className="bg-[#f5f5f7] rounded-xl p-1 space-y-1">
-                                    {MOCK_USER.addresses.map(addr => (
-                                        <div key={addr.id} className="p-4 bg-white rounded-lg shadow-sm">
-                                            <div className="flex items-center gap-2 mb-1">
-                                                <span className="text-[12px] font-semibold text-gray-900 uppercase">{addr.type}</span>
-                                                {addr.isDefault && <span className="bg-gray-100 text-gray-600 px-1.5 py-0.5 rounded text-[10px] font-medium">Default</span>}
-                                            </div>
-                                            <p className="text-[14px] text-gray-500 leading-normal">{addr.text}</p>
-                                        </div>
-                                    ))}
+                                <div className="bg-[#f5f5f7] rounded-xl p-1">
+                                    <div className="p-4 bg-white rounded-lg shadow-sm text-center text-gray-500 text-[14px]">
+                                        No addresses saved yet
+                                    </div>
                                 </div>
                             </div>
                             <div>
                                 <h4 className="text-[17px] font-semibold text-[#1d1d1f] mb-4">Recent Orders</h4>
-                                <div className="space-y-4">
-                                    {MOCK_USER.orders.map(order => (
-                                        <div key={order.id} className="flex gap-4 py-4 border-b border-gray-100 last:border-0">
-                                            <div className="w-16 h-16 bg-[#f5f5f7] rounded-lg flex items-center justify-center"><Package className="w-6 h-6 text-gray-400" /></div>
-                                            <div className="flex-1">
-                                                <div className="flex justify-between mb-1">
-                                                    <span className="text-[15px] font-medium text-[#1d1d1f]">{order.items}</span>
-                                                    <span className="text-[14px] text-gray-500">{order.status}</span>
-                                                </div>
-                                                <p className="text-[13px] text-gray-500">S${order.total} • {order.date}</p>
-                                            </div>
-                                        </div>
-                                    ))}
+                                <div className="text-center text-gray-500 text-[14px] py-4">
+                                    No orders yet
                                 </div>
                             </div>
                             <button

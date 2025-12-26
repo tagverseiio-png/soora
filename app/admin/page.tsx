@@ -1,7 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo, useState } from "react";
+import { useMemo, useState, useEffect } from "react";
+import { useRouter } from "next/navigation";
 import {
   ArrowLeft,
   ArrowUpRight,
@@ -43,6 +44,8 @@ import {
 } from "@/components/ui/table";
 import { CATEGORIES, PRODUCTS } from "@/lib/data";
 import { Product } from "@/lib/types";
+import { apiClient } from "@/lib/apiClient";
+import { useAuth } from "@/lib/AuthContext";
 import {
   Dialog,
   DialogContent,
@@ -53,47 +56,6 @@ import {
 } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { Plus, Pencil, Trash2 } from "lucide-react";
-
-const MOCK_ORDERS = [
-  {
-    id: "ORD-1042", customer: "Chloe Lim", total: 412.4, items: 5, status: "PICKED_UP", channel: "Web", placed: "Dec 20, 19:12",
-    stripe_payment_id: "pi_3M9uX2LkdIw8", stripe_status: "succeeded",
-    lalamove_tracking_url: "https://lalamove.app/track/123456", lalamove_driver: { name: "Tan Wei Ming", phone: "+65 9123 4567", plate: "SJA 1234 X" },
-    lalamove_status: "PICKED_UP"
-  },
-  {
-    id: "ORD-1041", customer: "Ethan Tan", total: 176.5, items: 3, status: "ASSIGNING_DRIVER", channel: "iOS", placed: "Dec 20, 18:41",
-    stripe_payment_id: "pi_3M9vY5PjdQz9", stripe_status: "succeeded",
-    lalamove_tracking_url: "", lalamove_driver: null,
-    lalamove_status: "ASSIGNING_DRIVER"
-  },
-  {
-    id: "ORD-1040", customer: "Priya Nair", total: 285.0, items: 4, status: "ON_GOING", channel: "Web", placed: "Dec 20, 18:02",
-    stripe_payment_id: "pi_3M9wZ8RkdSw1", stripe_status: "succeeded",
-    lalamove_tracking_url: "https://lalamove.app/track/789012", lalamove_driver: { name: "Rajesh Kumar", phone: "+65 8234 5678", plate: "SKB 5678 Y" },
-    lalamove_status: "ON_GOING"
-  },
-  {
-    id: "ORD-1039", customer: "Marcus Lee", total: 98.0, items: 1, status: "COMPLETED", channel: "Android", placed: "Dec 20, 16:55",
-    stripe_payment_id: "pi_3M9xA1TkdUy2", stripe_status: "succeeded",
-    lalamove_tracking_url: "https://lalamove.app/track/345678", lalamove_driver: { name: "Lim Ah Seng", phone: "+65 9876 5432", plate: "SLC 9012 Z" },
-    lalamove_status: "COMPLETED"
-  },
-  {
-    id: "ORD-1038", customer: "Sarah Chen", total: 320.0, items: 2, status: "CANCELED", channel: "Web", placed: "Dec 20, 15:30",
-    stripe_payment_id: "pi_3M9yB3VkdVz3", stripe_status: "failed",
-    lalamove_tracking_url: "", lalamove_driver: null,
-    lalamove_status: "CANCELED"
-  },
-];
-
-const MOCK_USERS = [
-  { id: "USR-201", name: "Chloe Lim", email: "chloe.lim@example.sg", tier: "Gold", orders: 18, spend: 4280, status: "Active" },
-  { id: "USR-198", name: "Ethan Tan", email: "ethan.tan@example.sg", tier: "Silver", orders: 11, spend: 2150, status: "Active" },
-  { id: "USR-176", name: "Priya Nair", email: "priya.nair@example.sg", tier: "Platinum", orders: 26, spend: 7120, status: "Active" },
-  { id: "USR-155", name: "Marcus Lee", email: "marcus.lee@example.sg", tier: "Bronze", orders: 4, spend: 320, status: "Churn Risk" },
-  { id: "USR-142", name: "Sofia Goh", email: "sofia.goh@example.sg", tier: "Silver", orders: 9, spend: 1440, status: "Invite Sent" },
-];
 
 const statusToBadge: Record<string, { label: string; variant: "default" | "secondary" | "destructive" | "outline" }> = {
   Healthy: { label: "In stock", variant: "default" },
@@ -110,14 +72,6 @@ const statusToBadge: Record<string, { label: string; variant: "default" | "secon
   "Churn Risk": { label: "Churn risk", variant: "destructive" },
 };
 
-const buildInventory = (items: Product[]) =>
-  items.map((product, idx) => {
-    const stock = 8 + ((product.id * 11 + idx * 3) % 44);
-    const status = product.price === 0 ? "Hidden" : stock < 12 ? "Low" : "Healthy";
-    const margin = 32 + ((product.id + idx) % 18);
-    return { ...product, stock, status, margin };
-  });
-
 const moduleLinks = [
   { name: "Overview", icon: LayoutDashboard },
   { name: "Products", icon: PackageSearch },
@@ -126,6 +80,8 @@ const moduleLinks = [
 ];
 
 export default function AdminPanel() {
+  const router = useRouter();
+  const { user, loading: authLoading } = useAuth();
   const [search, setSearch] = useState("");
   const [category, setCategory] = useState<string>("All");
   const [activeView, setActiveView] = useState("Overview");
@@ -133,7 +89,7 @@ export default function AdminPanel() {
   // Order Management State
   const [orderSearch, setOrderSearch] = useState("");
   const [orderStatus, setOrderStatus] = useState("All");
-  const [selectedOrder, setSelectedOrder] = useState<typeof MOCK_ORDERS[0] | null>(null);
+  const [selectedOrder, setSelectedOrder] = useState<any | null>(null);
   const [isLocationDialogOpen, setIsLocationDialogOpen] = useState(false);
   const [selectedLocation, setSelectedLocation] = useState("");
 
@@ -141,21 +97,70 @@ export default function AdminPanel() {
   const [userSearch, setUserSearch] = useState("");
 
   // Product Management State
-  const [products, setProducts] = useState<Product[]>(() => buildInventory(PRODUCTS));
+  const [products, setProducts] = useState<Product[]>([]);
+  const [orders, setOrders] = useState<any[]>([]);
+  const [users, setUsers] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
   const [formData, setFormData] = useState<Partial<Product>>({});
+
+  // Fetch data from backend
+  useEffect(() => {
+    const fetchData = async () => {
+      if (authLoading || !user || user.role !== 'ADMIN') return;
+
+      try {
+        setLoading(true);
+        
+        // Fetch products - include inactive products for admin
+        const productsRes = await apiClient.request('/products?includeInactive=true');
+        const productsList = Array.isArray(productsRes) ? productsRes : (productsRes.products || []);
+        setProducts(productsList);
+
+        // Fetch orders - use admin endpoint
+        const ordersRes = await apiClient.request('/orders/admin/list');
+        const ordersList = Array.isArray(ordersRes) ? ordersRes : (ordersRes.orders || []);
+        setOrders(ordersList);
+
+        // Fetch users - use admin endpoint
+        const usersRes = await apiClient.request('/users/admin/list');
+        const usersList = Array.isArray(usersRes) ? usersRes : (usersRes.users || []);
+        setUsers(usersList);
+      } catch (error) {
+        console.error('Failed to fetch admin data:', error);
+        setProducts([]);
+        setOrders([]);
+        setUsers([]);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchData();
+  }, [authLoading, user]);
+
+  // Check authentication and redirect
+  useEffect(() => {
+    if (!authLoading) {
+      if (!user) {
+        router.push('/login');
+      } else if (user.role !== 'ADMIN') {
+        router.push('/');
+      }
+    }
+  }, [user, authLoading, router]);
 
   const pricedItems = products.filter((p) => p.price > 0);
   const avgPrice = pricedItems.reduce((sum, p) => sum + p.price, 0) / (pricedItems.length || 1);
   const totalStock = products.reduce((sum, item) => sum + item.stock, 0);
   const needsPricing = products.length - pricedItems.length;
-  const totalGMV = MOCK_ORDERS.reduce((sum, order) => sum + order.total, 0);
-  const ordersCount = MOCK_ORDERS.length;
+  const totalGMV = orders.reduce((sum, order) => sum + (order.total || 0), 0);
+  const ordersCount = orders.length;
   const avgOrderValue = totalGMV / (ordersCount || 1);
-  const activeUsers = MOCK_USERS.filter((u) => u.status === "Active").length;
-  const lowStock = products.filter((i) => i.status === "Low").length;
-  const hidden = products.filter((i) => i.status === "Hidden").length;
+  const activeUsers = users.filter((u) => u.isActive === true).length;
+  const lowStock = products.filter((i) => i.stock < 12).length;
+  const hidden = products.filter((i) => i.isActive === false).length;
 
   const filteredInventory = useMemo(
     () =>
@@ -170,10 +175,10 @@ export default function AdminPanel() {
   );
 
   const filteredOrders = useMemo(() => {
-    return MOCK_ORDERS.filter((order) => {
+    return orders.filter((order) => {
       const matchesSearch =
-        order.id.toLowerCase().includes(orderSearch.toLowerCase()) ||
-        order.customer.toLowerCase().includes(orderSearch.toLowerCase());
+        (order.id || '').toLowerCase().includes(orderSearch.toLowerCase()) ||
+        (order.customer || '').toLowerCase().includes(orderSearch.toLowerCase());
 
       let matchesStatus = true;
       if (orderStatus === "Assigning") matchesStatus = order.status === "ASSIGNING_DRIVER";
@@ -183,73 +188,82 @@ export default function AdminPanel() {
 
       return matchesSearch && matchesStatus;
     });
-  }, [orderSearch, orderStatus]);
+  }, [orders, orderSearch, orderStatus]);
 
   const filteredUsers = useMemo(() => {
-    return MOCK_USERS.filter(user =>
-      user.name.toLowerCase().includes(userSearch.toLowerCase()) ||
-      user.email.toLowerCase().includes(userSearch.toLowerCase())
+    return users.filter(user =>
+      (user.name || '').toLowerCase().includes(userSearch.toLowerCase()) ||
+      (user.email || '').toLowerCase().includes(userSearch.toLowerCase())
     );
-  }, [userSearch]);
+  }, [users, userSearch]);
 
-  const handleSaveProduct = () => {
+  const handleSaveProduct = async () => {
     if (!formData.name || !formData.category) return;
 
-    const nextStock = formData.stock ?? editingProduct?.stock ?? 0;
-    const nextPrice = formData.price ?? editingProduct?.price ?? 0;
-    const computedStatus = nextPrice === 0 ? "Hidden" : nextStock < 12 ? "Low" : "Healthy";
+    try {
+      const nextStock = formData.stock ?? editingProduct?.stock ?? 0;
+      const nextPrice = formData.price ?? editingProduct?.price ?? 0;
 
-    if (editingProduct) {
-      const updatedProduct: Product = {
-        ...editingProduct,
-        ...formData,
-        stock: nextStock,
-        price: nextPrice,
-        status: computedStatus,
-        margin: 35,
-        brand: formData.brand ?? editingProduct.brand,
-        image: formData.image ?? editingProduct.image,
-        volume: formData.volume ?? editingProduct.volume,
-        abv: formData.abv ?? editingProduct.abv,
-        desc: formData.desc ?? editingProduct.desc,
-        tags: formData.tags ?? editingProduct.tags,
-        time: formData.time ?? editingProduct.time,
-      };
-
-      setProducts((prev) =>
-        prev.map((product) => (product.id === editingProduct.id ? updatedProduct : product))
-      );
-    } else {
-      const newProduct: Product = {
-        id: Math.max(...products.map((product) => product.id), 0) + 1,
-        name: formData.name!,
-        category: formData.category!,
+      const productData = {
+        name: formData.name,
+        category: formData.category,
         price: nextPrice,
         stock: nextStock,
-        status: computedStatus,
-        image: formData.image ?? "/placeholder.png",
+        images: formData.image ? [formData.image] : ['/placeholder.png'],
         brand: formData.brand ?? "Soora",
-        rating: formData.rating ?? 0,
-        reviews: formData.reviews ?? 0,
-        margin: 35,
         volume: formData.volume ?? "BOT",
         abv: formData.abv ?? "0%",
-        desc: formData.desc ?? "",
+        description: formData.desc ?? "",
         tags: formData.tags ?? [],
-        time: formData.time ?? "Today",
       };
 
-      setProducts((prev) => [newProduct, ...prev]);
-    }
+      if (editingProduct) {
+        // Update existing product
+        await apiClient.request(`/products/${editingProduct.id}`, {
+          method: 'PUT',
+          body: JSON.stringify(productData),
+        });
+      } else {
+        // Create new product
+        await apiClient.request('/products', {
+          method: 'POST',
+          body: JSON.stringify(productData),
+        });
+      }
 
-    setIsDialogOpen(false);
-    setEditingProduct(null);
-    setFormData({});
+      // Refresh products list - include inactive products for admin
+      const response = await apiClient.request('/products?includeInactive=true');
+      const productsList = Array.isArray(response) ? response : (response.products || []);
+      setProducts(productsList);
+
+      setIsDialogOpen(false);
+      setEditingProduct(null);
+      setFormData({});
+    } catch (error) {
+      console.error('Failed to save product:', error);
+      alert('Failed to save product. Please try again.');
+    }
   };
 
-  const deleteProduct = (id: number) => {
-    if (confirm("Are you sure you want to delete this product?")) {
-      setProducts((prev) => prev.filter((p) => p.id !== id));
+  const deleteProduct = async (id: string) => {
+    if (!confirm("Are you sure you want to delete this product?")) {
+      return;
+    }
+
+    try {
+      await apiClient.request(`/products/${id}`, {
+        method: 'DELETE',
+      });
+
+      // Refresh products list - include inactive products for admin
+      const response = await apiClient.request('/products?includeInactive=true');
+      const productsList = Array.isArray(response) ? response : (response.products || []);
+      setProducts(productsList);
+      
+      alert('Product deleted successfully!');
+    } catch (error) {
+      console.error('Failed to delete product:', error);
+      alert('Failed to delete product. Please try again.');
     }
   };
 
@@ -261,9 +275,36 @@ export default function AdminPanel() {
 
   const openEditModal = (product: Product) => {
     setEditingProduct(product);
-    setFormData(product);
+    setFormData({
+      ...product,
+      image: product.images?.[0] || '',
+    });
     setIsDialogOpen(true);
   };
+
+  // Show loading screen if auth is loading
+  if (authLoading) {
+    return (
+      <div className="min-h-screen bg-slate-50 flex items-center justify-center">
+        <Loader2 className="w-8 h-8 animate-spin text-indigo-600" />
+      </div>
+    );
+  }
+
+  // Show unauthorized message if not authenticated or not admin
+  if (!user || user.role !== 'ADMIN') {
+    return (
+      <div className="min-h-screen bg-slate-50 flex items-center justify-center">
+        <div className="text-center">
+          <h1 className="text-2xl font-bold text-slate-900 mb-2">Access Denied</h1>
+          <p className="text-slate-600 mb-4">You must be an admin to access this page</p>
+          <Link href="/" className="text-indigo-600 hover:underline">
+            Return to home
+          </Link>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-slate-50/50 text-slate-900 font-sans selection:bg-indigo-100">
@@ -488,7 +529,7 @@ export default function AdminPanel() {
                         </TableRow>
                       </TableHeader>
                       <TableBody>
-                        {MOCK_ORDERS.slice(0, 3).map((order) => {
+                        {orders.slice(0, 3).map((order) => {
                           const badge = statusToBadge[order.status];
                           return (
                             <TableRow key={order.id} className="border-slate-100 transition-colors hover:bg-slate-50/50">
@@ -574,19 +615,27 @@ export default function AdminPanel() {
                   </TableHeader>
                   <TableBody>
                     {filteredInventory.map((item) => {
-                      const badge = statusToBadge[item.status];
+                      // Calculate margin from costPrice if available
+                      const margin = item.costPrice && item.price > 0 
+                        ? Math.round(((item.price - item.costPrice) / item.price) * 100)
+                        : 0;
+                      
+                      // Determine status based on product state
+                      const status = !item.isActive ? 'Hidden' : item.stock < item.lowStockAlert ? 'Low Stock' : 'Active';
+                      const badge = statusToBadge[status];
+                      
                       return (
                         <TableRow key={item.id} className="border-slate-100 transition-colors hover:bg-indigo-50/30">
                           <TableCell className="font-medium text-slate-900">{item.name}</TableCell>
                           <TableCell className="hidden md:table-cell text-slate-500">{item.category}</TableCell>
                           <TableCell className="font-medium">{item.price > 0 ? `S$${item.price.toFixed(2)}` : "—"}</TableCell>
-                          <TableCell className="hidden md:table-cell text-slate-500">{item.margin}%</TableCell>
+                          <TableCell className="hidden md:table-cell text-slate-500">{margin}%</TableCell>
                           <TableCell>
                             <div className="flex items-center gap-2">
                               <span className="font-medium">{item.stock}</span>
                               <div className="h-1.5 w-16 rounded-full bg-slate-100 overflow-hidden">
                                 <div
-                                  className={`h-full rounded-full ${item.stock < 12 ? 'bg-rose-400' : 'bg-emerald-400'}`}
+                                  className={`h-full rounded-full ${item.stock < (item.lowStockAlert || 12) ? 'bg-rose-400' : 'bg-emerald-400'}`}
                                   style={{ width: `${Math.min(100, (item.stock / 50) * 100)}%` }}
                                 />
                               </div>
@@ -603,7 +652,7 @@ export default function AdminPanel() {
                                 border shadow-sm
                               `}
                             >
-                              {badge?.label || "Review"}
+                              {badge?.label || status}
                             </Badge>
                           </TableCell>
                           <TableCell>
@@ -752,29 +801,29 @@ export default function AdminPanel() {
               </CardHeader>
               <CardContent className="space-y-4 pt-4">
                 {filteredUsers.map((user) => {
-                  const badge = statusToBadge[user.status];
+                  const badge = statusToBadge[user.status || 'Active'];
                   return (
                     <div key={user.id} className="group flex items-center justify-between rounded-xl border border-slate-100 bg-white/50 px-4 py-3 transition-all hover:bg-white hover:shadow-md hover:border-indigo-100 hover:-translate-x-1">
                       <div className="flex items-center gap-3">
                         <div className="h-10 w-10 rounded-full bg-indigo-100 flex items-center justify-center text-indigo-700 font-bold text-sm ring-4 ring-white shadow-sm">
-                          {user.name.charAt(0)}
+                          {(user.name || user.email || 'U').charAt(0)}
                         </div>
                         <div className="flex flex-col">
-                          <span className="font-semibold text-base text-slate-900">{user.name}</span>
+                          <span className="font-semibold text-base text-slate-900">{user.name || user.email}</span>
                           <span className="text-xs text-slate-500 font-medium">{user.email}</span>
                         </div>
                       </div>
                       <div className="flex flex-col items-end gap-1">
                         <div className="text-right">
-                          <span className="block font-bold text-sm text-slate-900">S${user.spend.toLocaleString()}</span>
-                          <span className="text-[10px] text-slate-400 uppercase tracking-wide">{user.tier} Tier</span>
+                          <span className="block font-bold text-sm text-slate-900">S${(user.spend || 0).toLocaleString()}</span>
+                          <span className="text-[10px] text-slate-400 uppercase tracking-wide">{user.tier || 'Basic'} Tier</span>
                         </div>
                         <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold 
                           ${user.status === 'Active' ? 'bg-emerald-100 text-emerald-700' : ''}
                           ${user.status === 'Churn Risk' ? 'bg-rose-100 text-rose-700' : ''}
                           ${user.status === 'Invite Sent' ? 'bg-slate-100 text-slate-600' : ''}
                         `}>
-                          {user.status}
+                          {user.status || 'Active'}
                         </span>
                       </div>
                     </div>

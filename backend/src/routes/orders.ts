@@ -236,6 +236,40 @@ router.get(
   }
 );
 
+// Get all orders (Admin)
+router.get(
+  '/admin/list',
+  authenticate,
+  async (req: AuthRequest, res: Response) => {
+  try {
+    // Check if user is admin
+    if (req.user!.role !== 'ADMIN') {
+      return res.status(403).json({ error: 'Admin access required' });
+    }
+
+    const orders = await prisma.order.findMany({
+      include: {
+        items: {
+          include: {
+            product: {
+              select: { name: true, price: true }
+            },
+          },
+        },
+        user: {
+          select: { name: true, email: true },
+        },
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+
+    res.json(orders);
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+  }
+);
+
 // Cancel order
 router.put(
   '/:id/cancel',

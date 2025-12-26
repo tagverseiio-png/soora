@@ -7,7 +7,7 @@ async function main() {
   console.log('🌱 Starting database seeding...');
 
   // Create Admin User
-  const adminEmail = process.env.ADMIN_EMAIL || 'Soora@admin.com';
+  const adminEmail = (process.env.ADMIN_EMAIL || 'soora@admin.com').toLowerCase();
   const adminPassword = process.env.ADMIN_PASSWORD || 'Admin@soora';
   const adminName = process.env.ADMIN_NAME || 'Soora Administrator';
 
@@ -68,56 +68,63 @@ async function main() {
   const sampleProducts = [
     {
       name: 'Johnnie Walker Black Label',
+      brand: 'Johnnie Walker',
       slug: 'johnnie-walker-black-label',
       description: 'Blended Scotch whisky with rich, smooth taste',
-      categoryId: whiskyCat?.id,
+      category: 'whisky',
       price: 68.00,
       stock: 50,
       volume: '700ml',
-      alcoholContent: 40,
+      abv: '40%',
       origin: 'Scotland',
       isFeatured: true,
       isActive: true,
       images: ['/images/whisky/johnnie-walker-black.jpg'],
+      tags: ['whisky', 'scotch', 'blended'],
+      categoryId: whiskyCat?.id,
     },
     {
       name: 'Grey Goose Vodka',
+      brand: 'Grey Goose',
       slug: 'grey-goose-vodka',
       description: 'Premium French vodka made from finest ingredients',
-      categoryId: vodkaCat?.id,
+      category: 'vodka',
       price: 89.00,
       stock: 30,
       volume: '700ml',
-      alcoholContent: 40,
+      abv: '40%',
       origin: 'France',
       isFeatured: true,
       isActive: true,
       images: ['/images/vodka/grey-goose.jpg'],
+      tags: ['vodka', 'premium', 'french'],
+      categoryId: vodkaCat?.id,
     },
     {
       name: 'Hendricks Gin',
+      brand: 'Hendricks',
       slug: 'hendricks-gin',
       description: 'Unusual gin infused with cucumber and rose',
-      categoryId: ginCat?.id,
+      category: 'gin',
       price: 75.00,
       stock: 25,
       volume: '700ml',
-      alcoholContent: 41.4,
+      abv: '41.4%',
       origin: 'Scotland',
       isFeatured: true,
       isActive: true,
       images: ['/images/gin/hendricks.jpg'],
+      tags: ['gin', 'craft', 'botanical'],
+      categoryId: ginCat?.id,
     },
   ];
 
   for (const product of sampleProducts) {
-    if (product.categoryId) {
-      await prisma.product.upsert({
-        where: { slug: product.slug },
-        update: {},
-        create: product,
-      });
-    }
+    await prisma.product.upsert({
+      where: { slug: product.slug },
+      update: {},
+      create: product,
+    });
   }
 
   console.log(`✅ Created ${sampleProducts.length} sample products`);
@@ -130,10 +137,11 @@ async function main() {
     update: {},
     create: {
       code: 'WELCOME10',
+      name: 'Welcome Discount',
       description: 'Welcome discount - 10% off first order',
-      discountType: 'PERCENTAGE',
-      discountValue: 10,
-      minOrderAmount: 50,
+      type: 'PERCENTAGE',
+      value: 10,
+      minPurchase: 50,
       maxDiscount: 20,
       startDate: new Date(),
       endDate: new Date(Date.now() + 90 * 24 * 60 * 60 * 1000), // 90 days

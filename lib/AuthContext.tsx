@@ -1,17 +1,21 @@
 'use client';
 
 import { createContext, useContext, useEffect, useState } from 'react';
-import { authApi, handleApiError, type User, type AuthResponse } from './api';
+import { authApi, handleApiError, type User, type AuthResponse, usersApi, type Address } from './api';
 
 type AuthContextType = {
   user: User | null;
   loading: boolean;
   error: string | null;
   isAuthenticated: boolean;
+  selectedAddress: Address | null;
+  addresses: Address[];
   signIn: (email: string, password: string) => Promise<void>;
   signOut: () => Promise<void>;
   signUp: (email: string, password: string, data?: any) => Promise<void>;
   refreshUser: () => Promise<void>;
+  setSelectedAddress: (address: Address | null) => void;
+  fetchAddresses: () => Promise<void>;
 };
 
 const AuthContext = createContext<AuthContextType>({
@@ -37,6 +41,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [selectedAddress, setSelectedAddress] = useState<Address | null>(null);
+  const [addresses, setAddresses] = useState<Address[]>([]);
 
   useEffect(() => {
     checkSession();
@@ -59,11 +65,25 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
+  const fetchAddresses = async () => {
+    try {
+      const userAddresses = await usersApi.getAddresses();
+      setAddresses(userAddresses || []);
+      const defaultAddr = userAddresses?.find((a: Address) => a.isDefault);
+      setSelectedAddress(defaultAddr || null);
+    } catch (err) {
+      console.error('Failed to fetch addresses:', err);
+      setAddresses([]);
+      setSelectedAddress(null);
+    }
+  };
+
   const refreshUser = async () => {
     try {
       const userData = await authApi.getCurrentUser();
       setUser(userData);
       setError(null);
+      await fetchAddresses();
     } catch (err) {
       const message = handleApiError(err);
       setError(message);
@@ -125,10 +145,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         loading, 
         error, 
         isAuthenticated, 
+        selectedAddress,
+        addresses,
         signIn, 
         signOut, 
         signUp, 
-        refreshUser 
+        refreshUser,
+        setSelectedAddress,
+        fetchAddresses
       }}
     >
       {children}

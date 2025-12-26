@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { ArrowLeft, CreditCard, ShieldCheck, ShoppingBag } from "lucide-react";
@@ -8,22 +8,68 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
-import { PRODUCTS } from "@/lib/data";
+import { useAuth } from "@/lib/AuthContext";
+import { apiClient } from "@/lib/apiClient";
 
 export default function CheckoutPage() {
     const router = useRouter();
+    const { user, selectedAddress, addresses } = useAuth();
     const [isLoading, setIsLoading] = useState(false);
+    const [cart, setCart] = useState<any[]>([]);
+    const [selectedAddr, setSelectedAddr] = useState<any>(selectedAddress);
 
-    // Mock Cart Data for display
-    const cartItems = [PRODUCTS[0], PRODUCTS[2]];
-    const total = cartItems.reduce((acc, item) => acc + item.price, 0);
+    useEffect(() => {
+        // Redirect if not authenticated or missing profile
+        if (!user) {
+            router.push('/login');
+            return;
+        }
+        if (!user.name || !user.phone) {
+            router.push('/');
+            return;
+        }
+        if (!selectedAddress && addresses.length > 0) {
+            setSelectedAddr(addresses[0]);
+        }
+    }, [user, selectedAddress, addresses, router]);
+
+    if (!user || !user.name || !user.phone) {
+        return (
+            <div className="min-h-screen bg-[#F9F9F9] p-4 md:p-8 flex items-center justify-center">
+                <div className="text-center">
+                    <p className="text-gray-500 mb-4">Redirecting...</p>
+                </div>
+            </div>
+        );
+    }
+
+    const total = cart.reduce((acc, item) => acc + (item.price * (item.quantity || 1)), 0);
 
     const handleCheckout = async (e: React.FormEvent) => {
         e.preventDefault();
+        if (!selectedAddr) {
+            alert('Please select a delivery address');
+            return;
+        }
         setIsLoading(true);
-        // Simulate processing
-        await new Promise((resolve) => setTimeout(resolve, 1500));
-        router.push("/order-success");
+        try {
+            const orderPayload = {
+                addressId: selectedAddr.id,
+                items: cart.map(item => ({ productId: item.id, quantity: item.quantity || 1 })),
+                paymentMethod: 'STRIPE',
+                deliveryNotes: '',
+            };
+            await apiClient.request('/orders', {
+                method: 'POST',
+                body: JSON.stringify(orderPayload),
+            });
+            router.push('/order-success');
+        } catch (error) {
+            alert('Checkout failed. Please try again.');
+            console.error('Checkout error:', error);
+        } finally {
+            setIsLoading(false);
+        }
     };
 
     return (
@@ -53,31 +99,39 @@ export default function CheckoutPage() {
                                     <div className="grid grid-cols-2 gap-4">
                                         <div className="space-y-2">
                                             <Label htmlFor="firstName">First Name</Label>
-                                            <Input id="firstName" placeholder="John" required />
+                                            <Input id="firstName" value={user?.name?.split(' ')[0] || ''} disabled className="bg-gray-100" />
                                         </div>
                                         <div className="space-y-2">
                                             <Label htmlFor="lastName">Last Name</Label>
-                                            <Input id="lastName" placeholder="Doe" required />
+                                            <Input id="lastName" value={user?.name?.split(' ').slice(1).join(' ') || ''} disabled className="bg-gray-100" />
                                         </div>
                                     </div>
                                     <div className="space-y-2">
                                         <Label htmlFor="email">Email</Label>
-                                        <Input id="email" type="email" placeholder="john@example.com" required />
+                                        <Input id="email" type="email" value={user?.email || ''} disabled className="bg-gray-100" />
                                     </div>
                                     <div className="space-y-2">
-                                        <Label htmlFor="address">Address</Label>
-                                        <Input id="address" placeholder="123 Orchard Road" required />
+                                        <Label htmlFor="phone">Phone</Label>
+                                        <Input id="phone" value={user?.phone || ''} disabled className="bg-gray-100" />
                                     </div>
-                                    <div className="grid grid-cols-2 gap-4">
+                                    {addresses.length > 0 && (
                                         <div className="space-y-2">
-                                            <Label htmlFor="postal">Postal Code</Label>
-                                            <Input id="postal" placeholder="238888" required />
+                                            <Label htmlFor="address">Select Address</Label>
+                                            <select
+                                                id="address"
+                                                value={selectedAddr?.id || ''}
+                                                onChange={(e) => setSelectedAddr(addresses.find(a => a.id === e.target.value))}
+                                                className="w-full h-10 border border-gray-300 rounded-md px-3 py-2"
+                                            >
+                                                <option value="">Choose an address</option>
+                                                {addresses.map(addr => (
+                                                    <option key={addr.id} value={addr.id}>
+                                                        {addr.name} - {addr.street}
+                                                    </option>
+                                                ))}
+                                            </select>
                                         </div>
-                                        <div className="space-y-2">
-                                            <Label htmlFor="city">City</Label>
-                                            <Input id="city" defaultValue="Singapore" disabled />
-                                        </div>
-                                    </div>
+                                    )}
                                 </CardContent>
                             </Card>
 
@@ -125,18 +179,24 @@ export default function CheckoutPage() {
                                 </CardTitle>
                             </CardHeader>
                             <CardContent className="space-y-6">
-                                {cartItems.map((item) => (
-                                    <div key={item.id} className="flex gap-4">
-                                        <div className="h-16 w-16 bg-gray-100 rounded-md overflow-hidden relative">
-                                            <img src={item.image} alt={item.name} className="object-cover w-full h-full" />
-                                        </div>
-                                        <div className="flex-1">
-                                            <h4 className="font-semibold text-sm">{item.name}</h4>
-                                            <p className="text-xs text-gray-500">{item.brand}</p>
-                                            <p className="text-sm font-medium mt-1">S${item.price.toLocaleString()}</p>
-                                        </div>
+                                {cart.length === 0 ? (
+                                    <div className="text-center text-gray-500 py-8">
+                                        Cart is empty. <Link href="/" className="text-[#0071e3] font-medium">Continue shopping</Link>
                                     </div>
-                                ))}
+                                ) : (
+                                    cart.map((item) => (
+                                        <div key={item.id} className="flex gap-4">
+                                            <div className="h-16 w-16 bg-gray-100 rounded-md overflow-hidden relative">
+                                                <img src={item.images?.[0] || item.image || '/placeholder.png'} alt={item.name} className="object-cover w-full h-full" />
+                                            </div>
+                                            <div className="flex-1">
+                                                <h4 className="font-semibold text-sm">{item.name}</h4>
+                                                <p className="text-xs text-gray-500">{item.brand}</p>
+                                                <p className="text-sm font-medium mt-1">S${(item.price * (item.quantity || 1)).toLocaleString()}</p>
+                                            </div>
+                                        </div>
+                                    ))
+                                )}
 
                                 <div className="border-t pt-4 space-y-2">
                                     <div className="flex justify-between text-sm">

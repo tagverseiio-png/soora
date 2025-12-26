@@ -21,8 +21,7 @@ export default function LoginPage() {
 
     try {
       await signIn(email, password);
-      router.push('/');
-      router.refresh();
+      router.push('/shop');
     } catch (err: any) {
       setError(err?.message || 'Failed to sign in. Please try again.');
     } finally {

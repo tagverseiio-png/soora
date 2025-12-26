@@ -40,7 +40,17 @@ export const validators = {
     body('street').trim().notEmpty(),
     body('postalCode').matches(/^\d{6}$/),
     body('district').trim().notEmpty(),
-    body('type').isIn(['Home', 'Work', 'Other']),
+    body('type')
+      .customSanitizer((val) => typeof val === 'string' ? val.trim() : val)
+      .customSanitizer((val) => {
+        if (typeof val !== 'string') return val;
+        const lower = val.toLowerCase();
+        if (['home', 'work', 'other'].includes(lower)) {
+          return lower.charAt(0).toUpperCase() + lower.slice(1);
+        }
+        return val;
+      })
+      .isIn(['Home', 'Work', 'Other']),
   ],
 
   // Pagination

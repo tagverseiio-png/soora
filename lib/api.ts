@@ -44,6 +44,8 @@ export interface Address {
   district: string;
   city: string;
   country: string;
+  latitude?: number;
+  longitude?: number;
   isDefault: boolean;
   deliveryNotes?: string;
   createdAt: string;

@@ -32,8 +32,7 @@ export default function SignupPage() {
       await signUp(email, password, { name });
       setSuccess(true);
       setTimeout(() => {
-        router.push('/');
-        router.refresh();
+        router.push('/shop');
       }, 1500);
     } catch (err: any) {
       setError(err.message || 'Failed to create account. Please try again.');

@@ -22,6 +22,7 @@ interface CreateOrderBody {
   items: OrderItemInput[];
   paymentMethod: PaymentMethod;
   deliveryNotes?: string;
+  useHostedCheckout?: boolean;
 }
 
 interface CancelOrderBody {
@@ -43,7 +44,7 @@ router.post(
       return res.status(400).json({ errors: errors.array() });
     }
 
-    const { addressId, items, paymentMethod, deliveryNotes } = req.body;
+    const { addressId, items, paymentMethod, deliveryNotes, useHostedCheckout } = req.body;
     const userId = req.user!.id;
 
     // Get address
@@ -133,7 +134,7 @@ router.post(
 
     // Create Stripe payment intent if paying online
     let paymentIntent: Awaited<ReturnType<typeof stripeService.createPaymentIntent>> | null = null;
-    if (paymentMethod === 'STRIPE') {
+    if (paymentMethod === 'STRIPE' && !useHostedCheckout) {
       paymentIntent = await stripeService.createPaymentIntent(total, {
         orderId: order.id,
         orderNumber: order.orderNumber,

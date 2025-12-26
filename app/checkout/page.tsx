@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { ArrowLeft, CreditCard, ShieldCheck, ShoppingBag } from "lucide-react";
+import { ArrowLeft, ShieldCheck, ShoppingBag } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -33,6 +33,21 @@ export default function CheckoutPage() {
         }
     }, [user, selectedAddress, addresses, router]);
 
+    // Hydrate cart from localStorage
+    useEffect(() => {
+        try {
+            if (typeof window !== 'undefined') {
+                const raw = localStorage.getItem('cart_items');
+                if (raw) {
+                    const saved = JSON.parse(raw);
+                    if (Array.isArray(saved)) {
+                        setCart(saved);
+                    }
+                }
+            }
+        } catch (_) {}
+    }, []);
+
     if (!user || !user.name || !user.phone) {
         return (
             <div className="min-h-screen bg-[#F9F9F9] p-4 md:p-8 flex items-center justify-center">
@@ -58,12 +73,25 @@ export default function CheckoutPage() {
                 items: cart.map(item => ({ productId: item.id, quantity: item.quantity || 1 })),
                 paymentMethod: 'STRIPE',
                 deliveryNotes: '',
+                useHostedCheckout: true,
             };
-            await apiClient.request('/orders', {
+
+            // Create order then request a hosted Stripe Checkout session
+            const orderResponse = await apiClient.request<{ order: { id: string } }>('/orders', {
                 method: 'POST',
                 body: JSON.stringify(orderPayload),
             });
-            router.push('/order-success');
+
+            const checkoutSession = await apiClient.request<{ url: string }>('/payments/checkout-session', {
+                method: 'POST',
+                body: JSON.stringify({ orderId: orderResponse.order.id }),
+            });
+
+            if (checkoutSession?.url) {
+                window.location.href = checkoutSession.url;
+            } else {
+                throw new Error('Unable to start payment session.');
+            }
         } catch (error) {
             alert('Checkout failed. Please try again.');
             console.error('Checkout error:', error);
@@ -138,29 +166,14 @@ export default function CheckoutPage() {
                             <Card className="border-white/60 shadow-sm bg-white/80 backdrop-blur">
                                 <CardHeader>
                                     <CardTitle>Payment Method</CardTitle>
+                                    <CardDescription>We will redirect you to Stripe’s secure checkout to complete payment.</CardDescription>
                                 </CardHeader>
                                 <CardContent className="space-y-4">
                                     <div className="p-4 border border-indigo-100 bg-indigo-50/30 rounded-lg flex items-center gap-3">
                                         <ShieldCheck className="w-5 h-5 text-indigo-600" />
                                         <span className="text-sm text-indigo-900 font-medium">All transactions are secure and encrypted.</span>
                                     </div>
-                                    <div className="space-y-2">
-                                        <Label htmlFor="card">Card Number</Label>
-                                        <div className="relative">
-                                            <CreditCard className="absolute left-3 top-3 h-4 w-4 text-gray-400" />
-                                            <Input id="card" placeholder="0000 0000 0000 0000" className="pl-10" required />
-                                        </div>
-                                    </div>
-                                    <div className="grid grid-cols-2 gap-4">
-                                        <div className="space-y-2">
-                                            <Label htmlFor="expiry">Expiry</Label>
-                                            <Input id="expiry" placeholder="MM/YY" required />
-                                        </div>
-                                        <div className="space-y-2">
-                                            <Label htmlFor="cvc">CVC</Label>
-                                            <Input id="cvc" placeholder="123" required />
-                                        </div>
-                                    </div>
+                                    <p className="text-sm text-gray-600">You can pay with cards or PayNow in the hosted Stripe flow. No card details are collected here.</p>
                                 </CardContent>
                             </Card>
 

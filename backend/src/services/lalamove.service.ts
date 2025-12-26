@@ -49,13 +49,21 @@ export class LalamoveService {
   constructor() {
     this.apiKey = process.env.LALAMOVE_API_KEY!;
     this.apiSecret = process.env.LALAMOVE_API_SECRET!;
-    this.baseUrl = process.env.LALAMOVE_BASE_URL || 'https://rest.lalamove.com';
+    // Default to sandbox in non-production environments
+    const defaultBase = (process.env.NODE_ENV === 'production')
+      ? 'https://rest.lalamove.com'
+      : 'https://rest.sandbox.lalamove.com';
+    this.baseUrl = process.env.LALAMOVE_BASE_URL || defaultBase;
     this.market = process.env.LALAMOVE_MARKET || 'SG';
 
     this.client = axios.create({
       baseURL: this.baseUrl,
       timeout: 30000,
     });
+
+    if (!this.apiKey || !this.apiSecret) {
+      throw new Error('Missing Lalamove API credentials. Set LALAMOVE_API_KEY and LALAMOVE_API_SECRET in environment.');
+    }
   }
 
   /**

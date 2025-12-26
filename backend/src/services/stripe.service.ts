@@ -20,14 +20,57 @@ export class StripeService {
           region: 'Singapore',
           ...metadata
         },
-        automatic_payment_methods: {
-          enabled: true,
-        },
+        // Explicitly allow PayNow (and cards) for SG market
+        payment_method_types: ['paynow', 'card'],
       });
 
       return paymentIntent;
     } catch (error: any) {
       throw new Error(`Stripe payment intent creation failed: ${error.message}`);
+    }
+  }
+
+  /**
+   * Create a hosted Checkout Session supporting PayNow (and cards) in SG
+   */
+  async createCheckoutSession(params: {
+    amount: number;
+    successUrl: string;
+    cancelUrl: string;
+    metadata?: Record<string, any>;
+    customerEmail?: string;
+    orderNumber?: string;
+  }) {
+    const { amount, successUrl, cancelUrl, metadata = {}, customerEmail, orderNumber } = params;
+    try {
+      const session = await stripe.checkout.sessions.create({
+        mode: 'payment',
+        payment_method_types: ['paynow', 'card'],
+        currency: 'sgd',
+        success_url: successUrl,
+        cancel_url: cancelUrl,
+        customer_email: customerEmail,
+        line_items: [
+          {
+            quantity: 1,
+            price_data: {
+              currency: 'sgd',
+              product_data: {
+                name: orderNumber ? `Order ${orderNumber}` : 'Soora Order',
+              },
+              unit_amount: Math.round(amount * 100),
+            },
+          },
+        ],
+        metadata: {
+          region: 'Singapore',
+          ...metadata,
+        },
+      });
+
+      return session;
+    } catch (error: any) {
+      throw new Error(`Stripe checkout session creation failed: ${error.message}`);
     }
   }
 

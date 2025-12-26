@@ -52,16 +52,30 @@ export const apiClient = {
     clearTimeout(timeout);
 
     if (!response.ok) {
+      const cloned = response.clone();
       let errorMessage = response.statusText || 'Request failed';
       let errorData: any = undefined;
+      if (response.status === 401) {
+        try {
+          if (typeof window !== 'undefined') {
+            localStorage.removeItem('auth_token');
+          }
+        } catch (_) {}
+        // Prefer a clear message for auth failures
+        errorMessage = 'Unauthorized. Please log in again.';
+      }
       try {
         const body = await response.json();
         errorData = body;
         if (body?.error) errorMessage = body.error;
         else if (body?.message) errorMessage = body.message;
       } catch (_) {
-        const text = await response.text();
-        if (text) errorMessage = text;
+        try {
+          const text = await cloned.text();
+          if (text) errorMessage = text;
+        } catch (_) {
+          // swallow secondary parse errors
+        }
       }
       throw new ApiClientError(errorMessage, response.status, errorData);
     }

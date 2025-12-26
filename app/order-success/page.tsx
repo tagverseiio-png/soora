@@ -1,10 +1,52 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import { CheckCircle, Home, ShoppingBag } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { apiClient } from "@/lib/apiClient";
+
+type OrderDetail = {
+    id: string;
+    orderNumber: string;
+    customerEmail?: string | null;
+};
 
 export default function OrderSuccessPage() {
+    const params = useSearchParams();
+    const orderId = params.get("orderId");
+    const [order, setOrder] = useState<OrderDetail | null>(null);
+    const [loading, setLoading] = useState<boolean>(true);
+
+    useEffect(() => {
+        let isMounted = true;
+        async function fetchOrder() {
+            if (!orderId) {
+                setLoading(false);
+                return;
+            }
+            try {
+                const data = await apiClient.get<OrderDetail & { user?: { email?: string } }>(`/orders/${orderId}`);
+                if (!isMounted) return;
+                setOrder({
+                    id: data.id,
+                    orderNumber: data.orderNumber,
+                    customerEmail: (data as any)?.user?.email ?? undefined,
+                });
+            } catch (_) {
+                // silently ignore for success page
+            } finally {
+                if (isMounted) setLoading(false);
+            }
+        }
+        fetchOrder();
+        return () => { isMounted = false; };
+    }, [orderId]);
+
+    const referenceText = order?.orderNumber ? `#${order.orderNumber}` : (orderId ? `#${orderId}` : "#ORDER");
+    const emailText = order?.customerEmail ?? "";
+
     return (
         <div className="min-h-screen bg-[#F9F9F9] flex items-center justify-center p-4">
             <div className="max-w-md w-full text-center space-y-8 animate-in fade-in zoom-in duration-500">
@@ -23,12 +65,14 @@ export default function OrderSuccessPage() {
                 <div className="bg-white p-6 rounded-2xl border border-gray-100 shadow-sm space-y-4 text-left">
                     <div className="flex justify-between items-center border-b border-gray-100 pb-4">
                         <span className="text-sm text-gray-500">Order Reference</span>
-                        <span className="font-mono font-medium text-[#1d1d1f]">#ORD-{Math.floor(1000 + Math.random() * 9000)}</span>
+                        <span className="font-mono font-medium text-[#1d1d1f]">{referenceText}</span>
                     </div>
-                    <div>
-                        <p className="text-sm text-gray-500 mb-1">Confirmation sent to</p>
-                        <p className="font-medium text-[#1d1d1f]">john@example.com</p>
-                    </div>
+                    {emailText && (
+                        <div>
+                            <p className="text-sm text-gray-500 mb-1">Confirmation sent to</p>
+                            <p className="font-medium text-[#1d1d1f]">{emailText}</p>
+                        </div>
+                    )}
                 </div>
 
                 <div className="flex flex-col gap-3">

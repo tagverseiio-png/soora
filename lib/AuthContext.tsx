@@ -1,6 +1,6 @@
 'use client';
 
-import { createContext, useContext, useEffect, useState } from 'react';
+import { createContext, useContext, useEffect, useState, useRef, useCallback } from 'react';
 import { authApi, handleApiError, type User, type AuthResponse, usersApi, type Address } from './api';
 
 type AuthContextType = {
@@ -43,6 +43,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [error, setError] = useState<string | null>(null);
   const [selectedAddress, setSelectedAddress] = useState<Address | null>(null);
   const [addresses, setAddresses] = useState<Address[]>([]);
+  const addressesInFlight = useRef<Promise<void> | null>(null);
+  const addressesCooldownUntil = useRef<number>(0);
 
   useEffect(() => {
     checkSession();
@@ -65,18 +67,39 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
-  const fetchAddresses = async () => {
-    try {
-      const userAddresses = await usersApi.getAddresses();
-      setAddresses(userAddresses || []);
-      const defaultAddr = userAddresses?.find((a: Address) => a.isDefault);
-      setSelectedAddress(defaultAddr || null);
-    } catch (err) {
-      console.error('Failed to fetch addresses:', err);
-      setAddresses([]);
-      setSelectedAddress(null);
+  const fetchAddresses = useCallback(async () => {
+    const now = Date.now();
+    if (addressesCooldownUntil.current && now < addressesCooldownUntil.current) {
+      return;
     }
-  };
+    if (addressesInFlight.current) {
+      return addressesInFlight.current;
+    }
+
+    const run = (async () => {
+      try {
+        const userAddresses = await usersApi.getAddresses();
+        setAddresses(userAddresses || []);
+        const defaultAddr = userAddresses?.find((a: Address) => a.isDefault);
+        setSelectedAddress(defaultAddr || null);
+      } catch (err: any) {
+        const status = err?.status || err?.response?.status;
+        if (status === 429) {
+          // Back off to avoid hammering the rate limiter
+          addressesCooldownUntil.current = Date.now() + 60_000;
+          console.warn('Address fetch rate-limited (429). Cooling down for 60s.');
+        }
+        console.error('Failed to fetch addresses:', err);
+        setAddresses([]);
+        setSelectedAddress(null);
+      } finally {
+        addressesInFlight.current = null;
+      }
+    })();
+
+    addressesInFlight.current = run;
+    return run;
+  }, []);
 
   const refreshUser = async () => {
     try {

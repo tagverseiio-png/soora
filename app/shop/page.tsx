@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { ShoppingBag, Search, User, Home, Clock, ChevronDown, ArrowRight, Package, LogOut, MapPin } from 'lucide-react';
@@ -16,16 +16,17 @@ import { reverseGeocode } from '@/lib/utils';
 import HeroImage from '@/components/HeroImage';
 
 export default function ShopPage() {
-    const { user, signOut, selectedAddress, addresses, setSelectedAddress, fetchAddresses } = useAuth();
+    const { user, signOut, selectedAddress, addresses, setSelectedAddress, fetchAddresses, refreshUser } = useAuth();
     const router = useRouter();
     const [cart, setCart] = useState<Product[]>([]);
     const [isCartOpen, setIsCartOpen] = useState(false);
     const [isSearchOpen, setIsSearchOpen] = useState(false);
     const [isProfileOpen, setIsProfileOpen] = useState(false);
+    const [isEditingProfile, setIsEditingProfile] = useState(false);
     const [isLocationOpen, setIsLocationOpen] = useState(false);
     const [isProfileModalOpen, setIsProfileModalOpen] = useState(false);
     const [isAddingAddress, setIsAddingAddress] = useState(false);
-    const [newAddress, setNewAddress] = useState<{ type: string; name: string; street: string; unit?: string; building?: string; postalCode: string; district: string; isDefault: boolean; deliveryNotes?: string }>({
+    const [newAddress, setNewAddress] = useState<{ type: string; name: string; street: string; unit?: string; building?: string; postalCode: string; district: string; latitude?: number; longitude?: number; isDefault: boolean; deliveryNotes?: string }>({
         type: 'HOME',
         name: '',
         street: '',
@@ -33,6 +34,8 @@ export default function ShopPage() {
         building: '',
         postalCode: '',
         district: '',
+        latitude: undefined,
+        longitude: undefined,
         isDefault: false,
         deliveryNotes: ''
     });
@@ -41,27 +44,87 @@ export default function ShopPage() {
     const [orders, setOrders] = useState<any[]>([]);
     const [loading, setLoading] = useState(true);
     const [profileData, setProfileData] = useState({ name: '', phone: '' });
+    const [profileForm, setProfileForm] = useState({ name: '', phone: '' });
 
-    // Fetch products from backend
-    useEffect(() => {
-        const fetchProducts = async () => {
+    // Fetch products from backend with dev guard to avoid duplicate fetches
+    const didFetchProducts = useRef(false);
+    const productsInFlight = useRef<Promise<void> | null>(null);
+    const productsCooldownUntil = useRef<number>(0);
+    const productsRetryScheduled = useRef(false);
+
+    const fetchProducts = useCallback(async () => {
+        const now = Date.now();
+        if (productsCooldownUntil.current && now < productsCooldownUntil.current) {
+            return;
+        }
+        if (productsInFlight.current) {
+            return productsInFlight.current;
+        }
+        if (didFetchProducts.current) {
+            return;
+        }
+
+        const run = (async () => {
             try {
                 const response = await apiClient.request('/products');
-                if (response && Array.isArray(response)) {
-                    setProducts(response);
-                } else if (response && response.products) {
-                    setProducts(response.products);
+                const list = Array.isArray(response)
+                    ? response
+                    : (response as any)?.products || [];
+                setProducts(list);
+                didFetchProducts.current = true;
+            } catch (error: any) {
+                const status = error?.status || error?.response?.status;
+                if (status === 429) {
+                    // Retry once after a short delay, then back off for 60s
+                    if (!productsRetryScheduled.current) {
+                        productsRetryScheduled.current = true;
+                        setTimeout(() => {
+                            productsCooldownUntil.current = 0;
+                            productsInFlight.current = null;
+                            fetchProducts();
+                        }, 3000);
+                    } else {
+                        productsCooldownUntil.current = Date.now() + 60_000;
+                        console.warn('Products fetch rate-limited (429). Cooling down for 60s.');
+                    }
                 }
-            } catch (error) {
                 console.error('Failed to fetch products:', error);
                 setProducts([]);
             } finally {
+                productsInFlight.current = null;
                 setLoading(false);
             }
-        };
+        })();
 
-        fetchProducts();
+        productsInFlight.current = run;
+        return run;
     }, []);
+
+    useEffect(() => {
+        fetchProducts();
+    }, [fetchProducts]);
+
+    // Load cart from localStorage on first mount
+    useEffect(() => {
+        try {
+            if (typeof window !== 'undefined') {
+                const raw = localStorage.getItem('cart_items');
+                if (raw) {
+                    const saved = JSON.parse(raw);
+                    if (Array.isArray(saved)) {
+                        setCart(saved);
+                    }
+                }
+            }
+        } catch (_) {}
+    }, []);
+
+    // Keep inline profile form in sync when user or panel opens
+    useEffect(() => {
+        if (user) {
+            setProfileForm({ name: user.name || '', phone: user.phone || '' });
+        }
+    }, [user, isProfileOpen]);
 
     // Fetch orders when user is authenticated
     useEffect(() => {
@@ -101,7 +164,13 @@ export default function ShopPage() {
     // Ensure cart item carries a usable image URL
     const addToCart = (product: Product) => {
         const image = product.image || product.images?.[0] || '/placeholder.png';
-        setCart([...cart, { ...product, image }]);
+        const next = [...cart, { ...product, image }];
+        setCart(next);
+        try {
+            if (typeof window !== 'undefined') {
+                localStorage.setItem('cart_items', JSON.stringify(next));
+            }
+        } catch (_) {}
     };
     const removeFromCart = (product: Product) => {
         const index = cart.findIndex(item => item.id === product.id);
@@ -109,6 +178,11 @@ export default function ShopPage() {
             const newCart = [...cart];
             newCart.splice(index, 1);
             setCart(newCart);
+            try {
+                if (typeof window !== 'undefined') {
+                    localStorage.setItem('cart_items', JSON.stringify(newCart));
+                }
+            } catch (_) {}
         }
     };
     const cartTotal = cart.reduce((acc, item) => acc + item.price, 0);
@@ -407,6 +481,82 @@ export default function ShopPage() {
                             <p className="text-[14px] text-gray-500">{user?.email}</p>
                         </div>
                         <div className="space-y-8">
+                            {/* Editable Profile Section */}
+                            <div className="p-4 rounded-lg bg-[#f5f5f7] border border-gray-200">
+                                <div className="flex items-center justify-between mb-3">
+                                    <h4 className="text-[17px] font-semibold text-[#1d1d1f]">Profile</h4>
+                                    {!isEditingProfile ? (
+                                        <button
+                                            onClick={() => setIsEditingProfile(true)}
+                                            className="text-[13px] font-medium text-[#0071e3] hover:underline"
+                                        >
+                                            Edit
+                                        </button>
+                                    ) : (
+                                        <button
+                                            onClick={() => {
+                                                setIsEditingProfile(false);
+                                                setProfileForm({ name: user?.name || '', phone: user?.phone || '' });
+                                            }}
+                                            className="text-[13px] font-medium text-gray-600 hover:underline"
+                                        >
+                                            Cancel
+                                        </button>
+                                    )}
+                                </div>
+
+                                {!isEditingProfile ? (
+                                    <div className="space-y-1 text-[14px] text-gray-700">
+                                        <p><span className="text-gray-500">Name:</span> {user?.name || '—'}</p>
+                                        <p><span className="text-gray-500">Phone:</span> {user?.phone || '—'}</p>
+                                    </div>
+                                ) : (
+                                    <div className="space-y-3">
+                                        <div>
+                                            <label className="text-[12px] font-medium text-gray-600">Full Name</label>
+                                            <input
+                                                type="text"
+                                                value={profileForm.name}
+                                                onChange={(e) => setProfileForm({ ...profileForm, name: e.target.value })}
+                                                placeholder="Enter your full name"
+                                                className="w-full bg-white rounded-md px-3 py-2 text-[14px] border border-gray-200"
+                                            />
+                                        </div>
+                                        <div>
+                                            <label className="text-[12px] font-medium text-gray-600">Phone</label>
+                                            <input
+                                                type="tel"
+                                                value={profileForm.phone}
+                                                onChange={(e) => setProfileForm({ ...profileForm, phone: e.target.value })}
+                                                placeholder="e.g. +65 81234567"
+                                                className="w-full bg-white rounded-md px-3 py-2 text-[14px] border border-gray-200"
+                                            />
+                                        </div>
+                                        <button
+                                            onClick={async () => {
+                                                if (!profileForm.name || !profileForm.phone) {
+                                                    alert('Please fill in name and phone');
+                                                    return;
+                                                }
+                                                try {
+                                                    await apiClient.request('/users/profile', {
+                                                        method: 'PUT',
+                                                        body: JSON.stringify(profileForm),
+                                                    });
+                                                    await refreshUser();
+                                                    setIsEditingProfile(false);
+                                                } catch (_) {
+                                                    alert('Failed to save profile');
+                                                }
+                                            }}
+                                            className="w-full bg-[#1d1d1f] text-white px-4 py-2 rounded-md text-[14px] font-semibold"
+                                        >
+                                            Save Changes
+                                        </button>
+                                    </div>
+                                )}
+                            </div>
+
                             <div>
                                 <div className="flex justify-between items-baseline mb-4">
                                     <h4 className="text-[17px] font-semibold text-[#1d1d1f]">Recent Orders</h4>
@@ -468,6 +618,8 @@ export default function ShopPage() {
                                                     building: info.building || '',
                                                     postalCode: info.postalCode || '',
                                                     district: info.district || '',
+                                                    latitude: pos.coords.latitude,
+                                                    longitude: pos.coords.longitude,
                                                     isDefault: true,
                                                     deliveryNotes: ''
                                                 });
@@ -529,6 +681,14 @@ export default function ShopPage() {
                                         className="w-full bg-white rounded-md px-3 py-2 text-[14px] border border-gray-200"
                                     />
                                 </div>
+                                {typeof newAddress.latitude === 'number' && typeof newAddress.longitude === 'number' && (
+                                    <div className="md:col-span-2">
+                                        <label className="text-[12px] font-medium text-gray-600">Coordinates</label>
+                                        <div className="w-full bg-white rounded-md px-3 py-2 text-[14px] border border-gray-200 text-gray-700">
+                                            Lat: {newAddress.latitude.toFixed(6)}, Lng: {newAddress.longitude.toFixed(6)}
+                                        </div>
+                                    </div>
+                                )}
                                 <div>
                                     <label className="text-[12px] font-medium text-gray-600">Unit</label>
                                     <input
@@ -595,6 +755,12 @@ export default function ShopPage() {
                             <div className="flex gap-3">
                                 <button
                                     onClick={async () => {
+                                        const token = typeof window !== 'undefined' ? localStorage.getItem('auth_token') : null;
+                                        if (!user || !token) {
+                                            alert('Please log in to save an address');
+                                            router.push('/login');
+                                            return;
+                                        }
                                         if (!newAddress.name || !newAddress.street || !newAddress.postalCode || !newAddress.district) {
                                             alert('Please fill in name, street, postal code, and district');
                                             return;
@@ -605,7 +771,12 @@ export default function ShopPage() {
                                             setSelectedAddress(created as unknown as Address);
                                             setIsAddingAddress(false);
                                             setIsLocationOpen(false);
-                                        } catch (err) {
+                                        } catch (err: any) {
+                                            if (err?.status === 401) {
+                                                alert('Session expired. Please log in again to save addresses.');
+                                                router.push('/login');
+                                                return;
+                                            }
                                             alert('Failed to add address');
                                         }
                                     }}
@@ -647,6 +818,9 @@ export default function ShopPage() {
                                     <p className="text-[14px] font-semibold text-[#1d1d1f]">{addr.name}</p>
                                     <p className="text-[12px] text-gray-600">{addr.street} {addr.unit && `#${addr.unit}`}</p>
                                     <p className="text-[12px] text-gray-500">{addr.postalCode}, {addr.district}</p>
+                                    {typeof addr.latitude === 'number' && typeof addr.longitude === 'number' && (
+                                        <p className="text-[11px] text-gray-500">Lat: {addr.latitude.toFixed(6)}, Lng: {addr.longitude.toFixed(6)}</p>
+                                    )}
                                     {addr.isDefault && <span className="text-[11px] text-green-600 font-medium">Default</span>}
                                 </button>
                             ))}
@@ -689,7 +863,9 @@ export default function ShopPage() {
                                     method: 'PUT',
                                     body: JSON.stringify(profileData),
                                 });
+                                await refreshUser();
                                 setIsProfileModalOpen(false);
+                                setIsProfileOpen(false);
                             } catch (error) {
                                 alert('Failed to update profile');
                             }

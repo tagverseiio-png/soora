@@ -42,7 +42,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { CATEGORIES, PRODUCTS } from "@/lib/data";
+import { CATEGORIES } from "@/lib/data";
 import { Product } from "@/lib/types";
 import { apiClient } from "@/lib/apiClient";
 import { useAuth } from "@/lib/AuthContext";
@@ -60,6 +60,7 @@ import { Plus, Pencil, Trash2 } from "lucide-react";
 const statusToBadge: Record<string, { label: string; variant: "default" | "secondary" | "destructive" | "outline" }> = {
   Healthy: { label: "In stock", variant: "default" },
   Low: { label: "Low", variant: "destructive" },
+  "Low Stock": { label: "Low stock", variant: "destructive" },
   Hidden: { label: "Hidden", variant: "outline" },
   "ASSIGNING_DRIVER": { label: "Assigning Driver", variant: "outline" },
   "PICKED_UP": { label: "Picked Up", variant: "secondary" },
@@ -85,6 +86,7 @@ export default function AdminPanel() {
   const [search, setSearch] = useState("");
   const [category, setCategory] = useState<string>("All");
   const [activeView, setActiveView] = useState("Overview");
+  const [categories, setCategories] = useState<string[]>(CATEGORIES);
 
   // Order Management State
   const [orderSearch, setOrderSearch] = useState("");
@@ -107,20 +109,40 @@ export default function AdminPanel() {
 
   // Fetch data from backend
   useEffect(() => {
-    const fetchData = async () => {
+    const fetchAdminData = async () => {
       if (authLoading || !user || user.role !== 'ADMIN') return;
 
       try {
         setLoading(true);
-        
+
+        // Fetch categories (fallback to static CATEGORIES)
+        try {
+          const categoriesRes = await apiClient.request('/products/categories/list');
+          const names = Array.isArray(categoriesRes) ? categoriesRes.map((c: any) => c.name) : [];
+          if (names.length) setCategories(["All", ...names]);
+        } catch (_) {
+          setCategories(CATEGORIES);
+        }
+
         // Fetch products - include inactive products for admin
         const productsRes = await apiClient.request('/products?includeInactive=true');
         const productsList = Array.isArray(productsRes) ? productsRes : (productsRes.products || []);
         setProducts(productsList);
 
-        // Fetch orders - use admin endpoint
+        // Fetch orders - use admin endpoint and normalize shape for UI
         const ordersRes = await apiClient.request('/orders/admin/list');
-        const ordersList = Array.isArray(ordersRes) ? ordersRes : (ordersRes.orders || []);
+        const rawOrders = Array.isArray(ordersRes) ? ordersRes : (ordersRes.orders || []);
+        const ordersList = rawOrders.map((o: any) => ({
+          ...o,
+          customer: (o.user?.name || o.user?.email || '').trim(),
+          items: Array.isArray(o.items) ? o.items.length : 0,
+          channel: (o.paymentMethod || '').toUpperCase(),
+          placed: o.createdAt ? new Date(o.createdAt).toLocaleDateString(undefined, { month: 'short', day: '2-digit' }) : '',
+          stripePaymentId: o.stripePaymentId,
+          paymentStatus: o.paymentStatus,
+          lalamoveStatus: o.lalamoveStatus,
+          lalamoveTrackingUrl: o.lalamoveTrackingUrl,
+        }));
         setOrders(ordersList);
 
         // Fetch users - use admin endpoint
@@ -137,7 +159,7 @@ export default function AdminPanel() {
       }
     };
 
-    fetchData();
+    fetchAdminData();
   }, [authLoading, user]);
 
   // Check authentication and redirect
@@ -386,7 +408,7 @@ export default function AdminPanel() {
                 <p className="text-sm text-slate-500 font-medium">Manage your store operations.</p>
               </div>
               <div className="flex flex-wrap gap-3">
-                <Button variant="outline" className="gap-2 border-slate-200 bg-white/50 hover:bg-white hover:border-indigo-200 hover:text-indigo-600 transition-all shadow-sm" onClick={() => { setSearch(""); setCategory("All"); }}>
+                <Button variant="outline" className="gap-2 border-slate-200 bg-white/50 hover:bg-white hover:border-indigo-200 hover:text-indigo-600 transition-all shadow-sm" onClick={async () => { setSearch(""); setCategory("All"); setLoading(true); try { const productsRes = await apiClient.request('/products?includeInactive=true'); const productsList = Array.isArray(productsRes) ? productsRes : (productsRes.products || []); setProducts(productsList); const ordersRes = await apiClient.request('/orders/admin/list'); const rawOrders = Array.isArray(ordersRes) ? ordersRes : (ordersRes.orders || []); const ordersList = rawOrders.map((o: any) => ({ ...o, customer: (o.user?.name || o.user?.email || '').trim(), items: Array.isArray(o.items) ? o.items.length : 0, channel: (o.paymentMethod || '').toUpperCase(), placed: o.createdAt ? new Date(o.createdAt).toLocaleDateString(undefined, { month: 'short', day: '2-digit' }) : '', stripePaymentId: o.stripePaymentId, paymentStatus: o.paymentStatus, lalamoveStatus: o.lalamoveStatus, lalamoveTrackingUrl: o.lalamoveTrackingUrl, })); setOrders(ordersList); const usersRes = await apiClient.request('/users/admin/list'); const usersList = Array.isArray(usersRes) ? usersRes : (usersRes.users || []); setUsers(usersList); } catch (e) { console.error('Failed to refresh admin data:', e); } finally { setLoading(false); } }}>
                   <RefreshCw className="h-4 w-4" /> Refresh Data
                 </Button>
                 <Button className="gap-2 bg-indigo-600 hover:bg-indigo-700 text-white shadow-lg shadow-indigo-600/20 shadow-indigo-600/10 transition-all hover:shadow-indigo-600/30" asChild>
@@ -446,7 +468,8 @@ export default function AdminPanel() {
                       </TableHeader>
                       <TableBody>
                         {filteredInventory.slice(0, 5).map((item) => {
-                          const badge = statusToBadge[item.status];
+                          const status = !item.isActive ? 'Hidden' : item.stock < (item.lowStockAlert ?? 12) ? 'Low Stock' : 'Active';
+                          const badge = statusToBadge[status] || statusToBadge['Active'];
                           return (
                             <TableRow key={item.id} className="border-slate-100 transition-colors hover:bg-indigo-50/30">
                               <TableCell className="font-medium text-slate-900">{item.name}</TableCell>
@@ -468,7 +491,7 @@ export default function AdminPanel() {
                                     border shadow-sm
                                   `}
                                 >
-                                  {badge?.label || "Review"}
+                                  {badge?.label || status}
                                 </Badge>
                               </TableCell>
                             </TableRow>
@@ -487,7 +510,7 @@ export default function AdminPanel() {
                     </CardHeader>
                     <CardContent className="space-y-4 pt-6">
                       {[
-                        { label: "Live Products", value: PRODUCTS.length, color: "bg-emerald-500" },
+                        { label: "Live Products", value: products.filter(p => p.isActive).length, color: "bg-emerald-500" },
                         { label: "Pricing Required", value: needsPricing, color: "bg-amber-500" },
                         { label: "Low Stock Items", value: lowStock, color: "bg-rose-500" },
                         { label: "Hidden SKUs", value: hidden, color: "bg-slate-400" },
@@ -585,7 +608,7 @@ export default function AdminPanel() {
                       className="h-10 rounded-md border border-slate-200 bg-white/80 px-3 text-sm focus:ring-2 focus:ring-indigo-500/20 outline-none transition-all"
                     >
                       <option value="All">All Categories</option>
-                      {CATEGORIES.filter((c) => c !== "All").map((cat) => (
+                      {categories.filter((c) => c !== "All").map((cat) => (
                         <option key={cat} value={cat}>
                           {cat}
                         </option>
@@ -621,7 +644,7 @@ export default function AdminPanel() {
                         : 0;
                       
                       // Determine status based on product state
-                      const status = !item.isActive ? 'Hidden' : item.stock < item.lowStockAlert ? 'Low Stock' : 'Active';
+                      const status = !item.isActive ? 'Hidden' : item.stock < (item.lowStockAlert ?? 12) ? 'Low Stock' : 'Active';
                       const badge = statusToBadge[status];
                       
                       return (
@@ -863,7 +886,7 @@ export default function AdminPanel() {
                   className="col-span-3 flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
                 >
                   <option value="" disabled>Select Category</option>
-                  {CATEGORIES.filter(c => c !== "All").map(c => <option key={c} value={c}>{c}</option>)}
+                  {categories.filter(c => c !== "All").map(c => <option key={c} value={c}>{c}</option>)}
                 </select>
               </div>
               <div className="grid grid-cols-4 items-center gap-4">
@@ -959,7 +982,7 @@ export default function AdminPanel() {
                       <div className="flex justify-between items-center">
                         <span className="text-sm text-slate-500">Payment ID</span>
                         <code className="text-xs font-mono bg-white px-2 py-1 rounded border border-slate-200 text-slate-700">
-                          {selectedOrder.stripe_payment_id}
+                          {selectedOrder.stripePaymentId}
                         </code>
                       </div>
                       <div className="flex justify-between items-center">
@@ -968,10 +991,10 @@ export default function AdminPanel() {
                       </div>
                       <div className="flex justify-between items-center">
                         <span className="text-sm text-slate-500">Status</span>
-                        <Badge variant="outline" className={`
-                          ${selectedOrder.stripe_status === 'succeeded' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 'bg-amber-50 text-amber-700 border-amber-200'}
+                          <Badge variant="outline" className={`
+                          ${selectedOrder.paymentStatus === 'succeeded' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 'bg-amber-50 text-amber-700 border-amber-200'}
                         `}>
-                          {selectedOrder.stripe_status.toUpperCase()}
+                          {(selectedOrder.paymentStatus || '').toString().toUpperCase()}
                         </Badge>
                       </div>
                     </div>
@@ -1003,14 +1026,14 @@ export default function AdminPanel() {
                           <Users className="h-6 w-6 text-slate-400" />
                         </div>
                         <div className="flex-1">
-                          <h4 className="font-bold text-slate-900">{selectedOrder.lalamove_driver.name}</h4>
+                          <h4 className="font-bold text-slate-900">{selectedOrder.lalamove_driver?.name}</h4>
                           <div className="flex items-center gap-2 text-xs text-slate-500">
-                            <span>{selectedOrder.lalamove_driver.plate}</span>
+                            <span>{selectedOrder.lalamove_driver?.plate}</span>
                             <span>•</span>
-                            <span>{selectedOrder.lalamove_driver.phone}</span>
+                            <span>{selectedOrder.lalamove_driver?.phone}</span>
                           </div>
                         </div>
-                        <a href={`tel:${selectedOrder.lalamove_driver.phone}`} className="p-2 rounded-full bg-emerald-50 text-emerald-600 hover:bg-emerald-100">
+                        <a href={`tel:${selectedOrder.lalamove_driver?.phone || ''}`} className="p-2 rounded-full bg-emerald-50 text-emerald-600 hover:bg-emerald-100">
                           <Users className="h-4 w-4" />
                         </a>
                       </div>
@@ -1022,7 +1045,7 @@ export default function AdminPanel() {
                         <div className="relative flex items-start gap-3">
                           <div className="absolute -left-[5px] mt-1 h-3 w-3 rounded-full bg-emerald-500 ring-4 ring-white"></div>
                           <div className="flex flex-col">
-                            <span className="text-sm font-semibold text-slate-900">{selectedOrder.lalamove_status}</span>
+                            <span className="text-sm font-semibold text-slate-900">{selectedOrder.lalamoveStatus}</span>
                             <span className="text-xs text-slate-500">Current Status</span>
                           </div>
                         </div>
@@ -1036,7 +1059,7 @@ export default function AdminPanel() {
                         </div>
                       </div>
 
-                      {selectedOrder.lalamove_tracking_url && (
+                      {selectedOrder.lalamoveTrackingUrl && (
                         <Button className="w-full bg-[#ff6b00] hover:bg-[#e66000] text-white shadow-lg shadow-orange-500/20">
                           Track Delivery Live
                           <ArrowUpRight className="ml-2 h-4 w-4" />

@@ -48,7 +48,11 @@ export default function SooraApp() {
     }, [showShop]);
 
     const getItemCount = (productId: string) => cart.filter(item => item.id === productId).length;
-    const addToCart = (product: Product) => setCart([...cart, product]);
+    // Ensure cart item carries a usable image URL
+    const addToCart = (product: Product) => {
+        const image = product.image || product.images?.[0] || '/placeholder.png';
+        setCart([...cart, { ...product, image }]);
+    };
     const removeFromCart = (product: Product) => {
         const index = cart.findIndex(item => item.id === product.id);
         if (index > -1) {
@@ -261,7 +265,7 @@ export default function SooraApp() {
                                 return (
                                     <div key={id} className="flex gap-4">
                                         <div className="w-20 h-24 bg-[#f5f5f7] rounded-lg overflow-hidden flex-shrink-0">
-                                            <img src={item.image} className="w-full h-full object-cover" alt={item.name} />
+                                            <img src={item.image || item.images?.[0] || '/placeholder.png'} className="w-full h-full object-cover" alt={item.name} />
                                         </div>
                                         <div className="flex-1 py-1">
                                             <div className="flex justify-between items-start mb-1">

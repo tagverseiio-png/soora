@@ -106,6 +106,7 @@ export default function AdminPanel() {
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
   const [formData, setFormData] = useState<Partial<Product>>({});
+  const [dispatching, setDispatching] = useState(false);
 
   // Fetch data from backend
   useEffect(() => {
@@ -286,6 +287,48 @@ export default function AdminPanel() {
     } catch (error) {
       console.error('Failed to delete product:', error);
       alert('Failed to delete product. Please try again.');
+    }
+  };
+
+  const markPackedAndDispatch = async (order: any) => {
+    try {
+      setDispatching(true);
+      await apiClient.request(`/admin/orders/${order.id}/status`, {
+        method: 'PUT',
+        body: JSON.stringify({ status: 'PACKED' }),
+      });
+
+      const delivery = await apiClient.request('/delivery/create', {
+        method: 'POST',
+        body: JSON.stringify({ orderId: order.id }),
+      });
+
+      try {
+        const ordersRes = await apiClient.request('/orders/admin/list');
+        const rawOrders = Array.isArray(ordersRes) ? ordersRes : (ordersRes.orders || []);
+        const ordersList = rawOrders.map((o: any) => ({
+          ...o,
+          customer: (o.user?.name || o.user?.email || '').trim(),
+          items: Array.isArray(o.items) ? o.items.length : 0,
+          channel: (o.paymentMethod || '').toUpperCase(),
+          placed: o.createdAt ? new Date(o.createdAt).toLocaleDateString(undefined, { month: 'short', day: '2-digit' }) : '',
+          stripePaymentId: o.stripePaymentId,
+          paymentStatus: o.paymentStatus,
+          lalamoveStatus: o.lalamoveStatus,
+          lalamoveTrackingUrl: o.lalamoveTrackingUrl,
+        }));
+        setOrders(ordersList);
+        const updated = ordersList.find((o: any) => o.id === order.id) || order;
+        setSelectedOrder(updated);
+      } catch (e) {
+        console.error('Failed to refresh admin data:', e);
+      }
+      alert('Dispatch created successfully.');
+    } catch (error: any) {
+      console.error('Dispatch failed:', error);
+      alert(error?.message || 'Failed to dispatch order.');
+    } finally {
+      setDispatching(false);
     }
   };
 
@@ -961,6 +1004,37 @@ export default function AdminPanel() {
                       Placed on {selectedOrder.placed} by <span className="font-semibold text-slate-700">{selectedOrder.customer}</span>
                     </DialogDescription>
                   </div>
+                  <div className="flex gap-2">
+                    <Button variant="outline" className="gap-2" onClick={async () => {
+                      try {
+                        const ordersRes = await apiClient.request('/orders/admin/list');
+                        const rawOrders = Array.isArray(ordersRes) ? ordersRes : (ordersRes.orders || []);
+                        const ordersList = rawOrders.map((o: any) => ({
+                          ...o,
+                          customer: (o.user?.name || o.user?.email || '').trim(),
+                          items: Array.isArray(o.items) ? o.items.length : 0,
+                          channel: (o.paymentMethod || '').toUpperCase(),
+                          placed: o.createdAt ? new Date(o.createdAt).toLocaleDateString(undefined, { month: 'short', day: '2-digit' }) : '',
+                          stripePaymentId: o.stripePaymentId,
+                          paymentStatus: o.paymentStatus,
+                          lalamoveStatus: o.lalamoveStatus,
+                          lalamoveTrackingUrl: o.lalamoveTrackingUrl,
+                        }));
+                        setOrders(ordersList);
+                        const updated = ordersList.find((o: any) => o.id === selectedOrder?.id) || selectedOrder;
+                        setSelectedOrder(updated);
+                      } catch (e) {
+                        console.error('Failed to refresh admin data:', e);
+                      }
+                    }}>
+                      <RefreshCw className="h-4 w-4" /> Refresh
+                    </Button>
+                    {selectedOrder?.status === 'CONFIRMED' && !selectedOrder?.lalamoveOrderId && (
+                      <Button className="bg-indigo-600 hover:bg-indigo-700 text-white" onClick={() => markPackedAndDispatch(selectedOrder)} disabled={dispatching}>
+                        {dispatching ? 'Dispatching…' : 'Mark as Packed & Dispatch'}
+                      </Button>
+                    )}
+                  </div>
                 </div>
               </DialogHeader>
 
@@ -1060,7 +1134,9 @@ export default function AdminPanel() {
                       </div>
 
                       {selectedOrder.lalamoveTrackingUrl && (
-                        <Button className="w-full bg-[#ff6b00] hover:bg-[#e66000] text-white shadow-lg shadow-orange-500/20">
+                        <Button className="w-full bg-[#ff6b00] hover:bg-[#e66000] text-white shadow-lg shadow-orange-500/20" onClick={() => {
+                          try { window.open(selectedOrder.lalamoveTrackingUrl, '_blank'); } catch (_) {}
+                        }}>
                           Track Delivery Live
                           <ArrowUpRight className="ml-2 h-4 w-4" />
                         </Button>

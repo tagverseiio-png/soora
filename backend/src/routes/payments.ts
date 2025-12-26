@@ -1,4 +1,4 @@
-import { Router, Request, Response } from 'express';
+import express, { Router, Request, Response } from 'express';
 import { stripeService } from '../services/stripe.service';
 import { authenticate, AuthRequest } from '../middleware/auth';
 import { prisma } from '../utils/prisma';
@@ -87,7 +87,8 @@ router.post('/checkout-session', authenticate, async (req: AuthRequest, res: Res
 });
 
 // Stripe webhook
-router.post('/webhook', async (req: Request, res: Response) => {
+// Stripe requires raw body for signature verification
+router.post('/webhook', express.raw({ type: 'application/json' }), async (req: Request, res: Response) => {
   const sig = req.headers['stripe-signature'] as string;
 
   try {

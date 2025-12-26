@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
-import { CheckCircle, Home, ShoppingBag } from "lucide-react";
+import { CheckCircle, Home, ShoppingBag, MapPin } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { apiClient } from "@/lib/apiClient";
 
@@ -11,6 +11,9 @@ type OrderDetail = {
     id: string;
     orderNumber: string;
     customerEmail?: string | null;
+    lalamoveOrderId?: string | null;
+    lalamoveTrackingUrl?: string | null;
+    lalamoveStatus?: string | null;
 };
 
 export default function OrderSuccessPage() {
@@ -18,6 +21,9 @@ export default function OrderSuccessPage() {
     const orderId = params.get("orderId");
     const [order, setOrder] = useState<OrderDetail | null>(null);
     const [loading, setLoading] = useState<boolean>(true);
+    const [trackingLoading, setTrackingLoading] = useState<boolean>(false);
+    const [trackingError, setTrackingError] = useState<string | null>(null);
+    const [trackingStatus, setTrackingStatus] = useState<string | null>(null);
 
     useEffect(() => {
         let isMounted = true;
@@ -33,6 +39,9 @@ export default function OrderSuccessPage() {
                     id: data.id,
                     orderNumber: data.orderNumber,
                     customerEmail: (data as any)?.user?.email ?? undefined,
+                    lalamoveOrderId: (data as any)?.lalamoveOrderId,
+                    lalamoveTrackingUrl: (data as any)?.lalamoveTrackingUrl,
+                    lalamoveStatus: (data as any)?.lalamoveStatus,
                 });
             } catch (_) {
                 // silently ignore for success page
@@ -43,6 +52,32 @@ export default function OrderSuccessPage() {
         fetchOrder();
         return () => { isMounted = false; };
     }, [orderId]);
+
+    const handleTrackDelivery = async () => {
+        if (!orderId) return;
+        setTrackingError(null);
+        setTrackingStatus(null);
+        setTrackingLoading(true);
+        try {
+            if (order?.lalamoveTrackingUrl) {
+                window.open(order.lalamoveTrackingUrl, "_blank");
+                return;
+            }
+            const data: any = await apiClient.get(`/delivery/track/${orderId}`);
+            const status = data?.data?.status || data?.status || order?.lalamoveStatus;
+            const shareLink = data?.data?.shareLink || data?.shareLink;
+            if (shareLink) {
+                window.open(shareLink, "_blank");
+            }
+            if (status) {
+                setTrackingStatus(status);
+            }
+        } catch (_) {
+            setTrackingError("Unable to fetch delivery status right now. Please try again shortly.");
+        } finally {
+            setTrackingLoading(false);
+        }
+    };
 
     const referenceText = order?.orderNumber ? `#${order.orderNumber}` : (orderId ? `#${orderId}` : "#ORDER");
     const emailText = order?.customerEmail ?? "";
@@ -73,9 +108,33 @@ export default function OrderSuccessPage() {
                             <p className="font-medium text-[#1d1d1f]">{emailText}</p>
                         </div>
                     )}
+                    {(order?.lalamoveOrderId || order?.lalamoveTrackingUrl || trackingStatus) && (
+                        <div className="mt-2 p-3 rounded-xl bg-gray-50 border border-gray-100">
+                            <div className="flex items-center justify-between text-sm text-[#1d1d1f]">
+                                <div className="flex items-center gap-2">
+                                    <MapPin className="w-4 h-4 text-[#0071e3]" />
+                                    <span className="font-medium">Delivery status</span>
+                                </div>
+                                <span className="text-xs font-semibold text-gray-600">{trackingStatus || order?.lalamoveStatus || "DISPATCHED"}</span>
+                            </div>
+                            {trackingError && (
+                                <p className="mt-2 text-xs text-red-500">{trackingError}</p>
+                            )}
+                        </div>
+                    )}
                 </div>
 
                 <div className="flex flex-col gap-3">
+                    {(order?.lalamoveOrderId || order?.lalamoveTrackingUrl) && (
+                        <Button
+                            className="w-full h-12 bg-[#0071e3] hover:bg-[#005bb5] text-white gap-2"
+                            variant="default"
+                            onClick={handleTrackDelivery}
+                            disabled={trackingLoading}
+                        >
+                            {trackingLoading ? "Checking delivery..." : "Track Delivery"}
+                        </Button>
+                    )}
                     <Link href="/">
                         <Button className="w-full h-12 bg-[#1d1d1f] hover:bg-black text-white gap-2">
                             <ShoppingBag className="w-4 h-4" /> Continue Shopping

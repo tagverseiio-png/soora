@@ -45,6 +45,9 @@ export default function ShopPage() {
     const [loading, setLoading] = useState(true);
     const [profileData, setProfileData] = useState({ name: '', phone: '' });
     const [profileForm, setProfileForm] = useState({ name: '', phone: '' });
+    const [trackingOrderId, setTrackingOrderId] = useState<string | null>(null);
+    const [trackingData, setTrackingData] = useState<Record<string, any>>({});
+    const [trackingErrors, setTrackingErrors] = useState<Record<string, string>>({});
 
     // Fetch products from backend with dev guard to avoid duplicate fetches
     const didFetchProducts = useRef(false);
@@ -144,6 +147,39 @@ export default function ShopPage() {
         };
         fetchOrders();
     }, [user]);
+
+    const handleTrackDelivery = async (order: any) => {
+        if (!order?.id) return;
+        const orderId = order.id;
+        setTrackingOrderId(orderId);
+        setTrackingErrors((prev) => ({ ...prev, [orderId]: '' }));
+        try {
+            if (order?.lalamoveTrackingUrl) {
+                window.open(order.lalamoveTrackingUrl, '_blank');
+                return;
+            }
+            const res: any = await apiClient.request(`/delivery/track/${orderId}`);
+            setTrackingData((prev) => ({ ...prev, [orderId]: res }));
+            const shareLink = res?.data?.shareLink || res?.shareLink;
+            if (shareLink) {
+                window.open(shareLink, '_blank');
+            }
+        } catch (error) {
+            setTrackingErrors((prev) => ({ ...prev, [orderId]: 'Unable to fetch delivery status right now.' }));
+        } finally {
+            setTrackingOrderId(null);
+        }
+    };
+
+    const getDeliveryStatus = (order: any) => {
+        const tracked = trackingData[order.id];
+        return tracked?.data?.status || tracked?.status || order.lalamoveStatus || (order.lalamoveOrderId ? 'OUT_FOR_DELIVERY' : order.status);
+    };
+
+    const getTrackingLink = (order: any) => {
+        const tracked = trackingData[order.id];
+        return tracked?.data?.shareLink || tracked?.shareLink || order.lalamoveTrackingUrl;
+    };
 
     // Ensure addresses are loaded
     useEffect(() => {
@@ -574,6 +610,39 @@ export default function ShopPage() {
                                                     <span className="text-[11px] font-medium text-gray-500">{order.status}</span>
                                                 </div>
                                                 <p className="text-[12px] text-gray-600">S${(order.total || 0).toFixed(2)}</p>
+                                                {(order.lalamoveOrderId || order.lalamoveStatus || order.lalamoveTrackingUrl) && (
+                                                    <div className="mt-3 space-y-2">
+                                                        <div className="flex items-center justify-between text-[12px] text-gray-600">
+                                                            <span>Delivery</span>
+                                                            <span className="text-[12px] font-semibold text-[#1d1d1f]">{getDeliveryStatus(order)}</span>
+                                                        </div>
+                                                        <div className="flex flex-wrap gap-2">
+                                                            <button
+                                                                onClick={() => handleTrackDelivery(order)}
+                                                                disabled={trackingOrderId === order.id}
+                                                                className="px-3 py-2 text-[12px] font-semibold rounded-md bg-white border border-gray-300 hover:border-gray-400 transition-colors disabled:opacity-60"
+                                                            >
+                                                                {trackingOrderId === order.id ? 'Checking...' : 'Track delivery'}
+                                                            </button>
+                                                            {getTrackingLink(order) && (
+                                                                <button
+                                                                    onClick={() => {
+                                                                        const link = getTrackingLink(order);
+                                                                        if (link) {
+                                                                            window.open(link, '_blank');
+                                                                        }
+                                                                    }}
+                                                                    className="px-3 py-2 text-[12px] font-semibold rounded-md bg-[#1d1d1f] text-white hover:bg-black transition-colors"
+                                                                >
+                                                                    Open live map
+                                                                </button>
+                                                            )}
+                                                        </div>
+                                                        {trackingErrors[order.id] && (
+                                                            <p className="text-[11px] text-red-500">{trackingErrors[order.id]}</p>
+                                                        )}
+                                                    </div>
+                                                )}
                                             </div>
                                         ))}
                                     </div>

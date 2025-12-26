@@ -68,9 +68,15 @@ app.use(compression());
 const apiLimiter = buildLimiter(100);
 const authLimiter = buildLimiter(50);
 app.use('/api', apiLimiter);
-// Increase body size limit to 10MB for product images
-app.use(express.json({ limit: '10mb' }));
-app.use(express.urlencoded({ extended: true, limit: '10mb' }));
+// Increase body size limit to 10MB for product images, but avoid JSON parsing for Stripe webhook
+app.use((req, res, next) => {
+  if (req.originalUrl === '/api/payments/webhook') {
+    return next();
+  }
+  return express.json({ limit: '10mb' })(req, res, () => {
+    express.urlencoded({ extended: true, limit: '10mb' })(req, res, next);
+  });
+});
 
 // Health check
 app.get('/health', (req: Request, res: Response) => {

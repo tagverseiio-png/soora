@@ -295,7 +295,7 @@ export default function AdminPanel() {
       setDispatching(true);
       await apiClient.request(`/admin/orders/${order.id}/status`, {
         method: 'PUT',
-        body: JSON.stringify({ status: 'PACKED' }),
+        body: JSON.stringify({ status: 'PROCESSING' }),
       });
 
       const delivery = await apiClient.request('/delivery/create', {

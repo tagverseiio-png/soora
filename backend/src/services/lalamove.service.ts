@@ -20,23 +20,34 @@ interface LalamoveStop {
 interface LalamoveQuoteRequest {
   serviceType: string;
   stops: LalamoveStop[];
-  deliveryTime?: string;
+  language?: string;
+  scheduleAt?: string; // ISO 8601 UTC, optional
+  specialRequests?: string[]; // optional per-market
+  isRouteOptimized?: boolean; // optional
+  item?: {
+    quantity?: string;
+    weight?: string; // e.g., LESS_THAN_3KG
+    categories?: string[];
+    handlingInstructions?: string[];
+  };
 }
 
-interface LalamoveOrderRequest extends LalamoveQuoteRequest {
-  quotedTotalFee: {
-    amount: string;
-    currency: string;
-  };
+interface LalamoveOrderData {
+  quotationId: string;
   sender: {
+    stopId: string;
     name: string;
     phone: string;
   };
   recipients: Array<{
+    stopId: string;
     name: string;
     phone: string;
     remarks?: string;
   }>;
+  isPODEnabled?: boolean;
+  partner?: string;
+  metadata?: Record<string, string>;
 }
 
 export class LalamoveService {
@@ -90,21 +101,48 @@ export class LalamoveService {
       const timestamp = Date.now().toString();
       const method = 'POST';
       const path = `/v3/quotations`;
-      const body = JSON.stringify(request);
+      // Derive sensible defaults
+      const derivedLanguage = 'en';
+      const enriched: LalamoveQuoteRequest = {
+        language: request.language || derivedLanguage,
+        isRouteOptimized: request.isRouteOptimized ?? true,
+        // Omit item to minimize schema issues in sandbox; can re-enable later
+        serviceType: request.serviceType,
+        stops: request.stops,
+        scheduleAt: request.scheduleAt,
+        specialRequests: request.specialRequests,
+      };
+
+      const payload = { data: enriched };
+      const body = JSON.stringify(payload);
 
       const signature = this.generateSignature(timestamp, method, path, body);
 
-      const response = await this.client.post(path, request, {
+      console.log('[Lalamove] Quotation Request:', {
+        url: `${this.baseUrl}${path}`,
+        method,
+        timestamp,
+        market: this.market,
+        body: payload,
+      });
+
+      const response = await this.client.post(path, payload, {
         headers: {
           'Authorization': `hmac ${this.apiKey}:${timestamp}:${signature}`,
           'Content-Type': 'application/json',
-          'Market': this.market,
+          'MARKET': this.market,
+          'Request-ID': crypto.randomUUID(),
         },
       });
 
+      console.log('[Lalamove] Quotation Response:', response.data);
       return response.data;
     } catch (error: any) {
-      console.error('Lalamove quotation error:', error.response?.data || error.message);
+      console.error('[Lalamove] Quotation Error:', {
+        status: error.response?.status,
+        data: error.response?.data ? JSON.stringify(error.response.data, null, 2) : undefined,
+        message: error.message,
+      });
       throw new Error(`Failed to get delivery quotation: ${error.response?.data?.message || error.message}`);
     }
   }
@@ -112,20 +150,23 @@ export class LalamoveService {
   /**
    * Create delivery order
    */
-  async createOrder(request: LalamoveOrderRequest) {
+  async createOrder(request: LalamoveOrderData) {
     try {
       const timestamp = Date.now().toString();
       const method = 'POST';
       const path = `/v3/orders`;
-      const body = JSON.stringify(request);
+      // Orders API expects payload wrapped under `data`
+      const payload = { data: request };
+      const body = JSON.stringify(payload);
 
       const signature = this.generateSignature(timestamp, method, path, body);
 
-      const response = await this.client.post(path, request, {
+      const response = await this.client.post(path, payload, {
         headers: {
           'Authorization': `hmac ${this.apiKey}:${timestamp}:${signature}`,
           'Content-Type': 'application/json',
-          'Market': this.market,
+          'MARKET': this.market,
+          'Request-ID': crypto.randomUUID(),
         },
       });
 
@@ -224,7 +265,8 @@ export class LalamoveService {
     dropoffLat: number,
     dropoffLng: number,
     pickupAddress: string,
-    dropoffAddress: string
+    dropoffAddress: string,
+    optimizeRoute: boolean = true
   ) {
     const request: LalamoveQuoteRequest = {
       serviceType: 'MOTORCYCLE', // Options: MOTORCYCLE, CAR, VAN
@@ -235,6 +277,8 @@ export class LalamoveService {
             lng: pickupLng.toString(),
             address: pickupAddress,
           },
+          name: 'Soora Store',
+          phone: process.env.STORE_PHONE || '+6590000000',
         },
         {
           location: {
@@ -242,8 +286,11 @@ export class LalamoveService {
             lng: dropoffLng.toString(),
             address: dropoffAddress,
           },
+          name: 'Recipient',
         },
       ],
+      language: this.market === 'SG' ? 'en_SG' : 'en_HK',
+      isRouteOptimized: optimizeRoute,
     };
 
     return this.getQuotation(request);

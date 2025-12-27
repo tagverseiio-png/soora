@@ -43,6 +43,10 @@ export default function OrderSuccessPage() {
                     lalamoveTrackingUrl: (data as any)?.lalamoveTrackingUrl,
                     lalamoveStatus: (data as any)?.lalamoveStatus,
                 });
+                // Clear cart on successful order
+                try {
+                    localStorage.removeItem('cart_items');
+                } catch (_) {}
             } catch (_) {
                 // silently ignore for success page
             } finally {
@@ -125,7 +129,7 @@ export default function OrderSuccessPage() {
                 </div>
 
                 <div className="flex flex-col gap-3">
-                    {(order?.lalamoveOrderId || order?.lalamoveTrackingUrl) && (
+                    {orderId && (
                         <Button
                             className="w-full h-12 bg-[#0071e3] hover:bg-[#005bb5] text-white gap-2"
                             variant="default"

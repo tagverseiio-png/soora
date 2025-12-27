@@ -48,6 +48,7 @@ export default function ShopPage() {
     const [trackingOrderId, setTrackingOrderId] = useState<string | null>(null);
     const [trackingData, setTrackingData] = useState<Record<string, any>>({});
     const [trackingErrors, setTrackingErrors] = useState<Record<string, string>>({});
+    const [slideKey, setSlideKey] = useState(0);
 
     // Fetch products from backend with dev guard to avoid duplicate fetches
     const didFetchProducts = useRef(false);
@@ -453,16 +454,26 @@ export default function ShopPage() {
                                 <span className="text-[14px] font-medium text-[#1d1d1f]">Free</span>
                             </div>
                             <SlideToPay 
+                                key={slideKey}
                                 total={cartTotal} 
                                 onComplete={() => { 
-                                    if (!user?.name || !user?.phone) {
+                                    if (!user) {
+                                        alert('Please sign in to continue.');
+                                        setSlideKey(prev => prev + 1);
+                                        setIsCartOpen(false);
+                                        setIsProfileOpen(true);
+                                        return;
+                                    }
+                                    if (!user.name || !user.phone) {
                                         alert('Please complete your profile first.');
+                                        setSlideKey(prev => prev + 1);
                                         setIsCartOpen(false);
                                         setIsProfileModalOpen(true);
                                         return;
                                     }
                                     if (!selectedAddress) {
                                         alert('Please select a delivery address.');
+                                        setSlideKey(prev => prev + 1);
                                         setIsLocationOpen(true);
                                         return;
                                     }

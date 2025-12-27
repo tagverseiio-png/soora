@@ -17,6 +17,9 @@ export default function CheckoutPage() {
     const [isLoading, setIsLoading] = useState(false);
     const [cart, setCart] = useState<any[]>([]);
     const [selectedAddr, setSelectedAddr] = useState<any>(selectedAddress);
+    const [deliveryQuote, setDeliveryQuote] = useState<any>(null);
+    const [quoteLoading, setQuoteLoading] = useState(false);
+    const [quoteError, setQuoteError] = useState<string | null>(null);
 
     useEffect(() => {
         // Redirect if not authenticated or missing profile
@@ -48,6 +51,32 @@ export default function CheckoutPage() {
         } catch (_) {}
     }, []);
 
+    // Fetch delivery quote when address is selected
+    useEffect(() => {
+        const fetchQuote = async () => {
+            if (!selectedAddr?.id) {
+                setDeliveryQuote(null);
+                return;
+            }
+            setQuoteLoading(true);
+            setQuoteError(null);
+            try {
+                const quote = await apiClient.request<any>('/delivery/quote', {
+                    method: 'POST',
+                    body: JSON.stringify({ addressId: selectedAddr.id }),
+                });
+                setDeliveryQuote(quote);
+            } catch (error: any) {
+                console.error('Failed to fetch delivery quote:', error);
+                setQuoteError('Unable to calculate delivery fee for this address.');
+                setDeliveryQuote(null);
+            } finally {
+                setQuoteLoading(false);
+            }
+        };
+        fetchQuote();
+    }, [selectedAddr?.id]);
+
     if (!user || !user.name || !user.phone) {
         return (
             <div className="min-h-screen bg-[#F9F9F9] p-4 md:p-8 flex items-center justify-center">
@@ -59,6 +88,8 @@ export default function CheckoutPage() {
     }
 
     const total = cart.reduce((acc, item) => acc + (item.price * (item.quantity || 1)), 0);
+    const deliveryFee = deliveryQuote?.deliveryFee ?? 0;
+    const finalTotal = total + deliveryFee;
 
     const handleCheckout = async (e: React.FormEvent) => {
         e.preventDefault();
@@ -74,6 +105,7 @@ export default function CheckoutPage() {
                 paymentMethod: 'STRIPE',
                 deliveryNotes: '',
                 useHostedCheckout: true,
+                deliveryFee: deliveryFee, // Pass the Lalamove-based delivery fee
             };
 
             // Create order then request a hosted Stripe Checkout session
@@ -177,8 +209,8 @@ export default function CheckoutPage() {
                                 </CardContent>
                             </Card>
 
-                            <Button type="submit" className="w-full h-12 text-lg bg-[#1d1d1f] hover:bg-black text-white" disabled={isLoading}>
-                                {isLoading ? "Processing..." : `Pay S$${total.toLocaleString()}`}
+                            <Button type="submit" className="w-full h-12 text-lg bg-[#1d1d1f] hover:bg-black text-white" disabled={isLoading || quoteLoading}>
+                                {isLoading ? "Processing..." : `Pay S$${finalTotal.toLocaleString()}`}
                             </Button>
                         </form>
                     </div>
@@ -216,13 +248,27 @@ export default function CheckoutPage() {
                                         <span className="text-gray-500">Subtotal</span>
                                         <span>S${total.toLocaleString()}</span>
                                     </div>
-                                    <div className="flex justify-between text-sm">
-                                        <span className="text-gray-500">Shipping</span>
-                                        <span className="text-green-600 font-medium">Free</span>
-                                    </div>
+                                    {quoteLoading && (
+                                        <div className="flex justify-between text-sm animate-pulse">
+                                            <span className="text-gray-500">Delivery (calculating...)</span>
+                                            <span>—</span>
+                                        </div>
+                                    )}
+                                    {quoteError && (
+                                        <div className="text-xs text-red-500">{quoteError}</div>
+                                    )}
+                                    {deliveryQuote && !quoteLoading && (
+                                        <div className="flex justify-between text-sm">
+                                            <span className="text-gray-500">Delivery</span>
+                                            <span>S${deliveryFee.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                                        </div>
+                                    )}
+                                    {deliveryQuote?.estimatedTime && (
+                                        <div className="text-xs text-gray-400">Est. {deliveryQuote.estimatedTime}</div>
+                                    )}
                                     <div className="flex justify-between text-lg font-bold pt-2 border-t mt-2">
                                         <span>Total</span>
-                                        <span>S${total.toLocaleString()}</span>
+                                        <span>S${finalTotal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
                                     </div>
                                 </div>
                             </CardContent>

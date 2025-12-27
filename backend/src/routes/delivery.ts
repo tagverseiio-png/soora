@@ -40,7 +40,19 @@ router.post('/quote', authenticate, async (req: AuthRequest, res) => {
       `${address.street}, Singapore ${address.postalCode}`
     );
 
-    res.json(quotation);
+    // Extract delivery fee from quotation
+    const deliveryFee = (quotation as any)?.quotedTotalFee?.amount 
+      ? parseFloat((quotation as any).quotedTotalFee.amount) / 100 
+      : parseFloat(process.env.DELIVERY_FEE || '5');
+    const estimatedTime = (quotation as any)?.estimatedTimeTaken || null;
+
+    res.json({
+      quotation,
+      deliveryFee,
+      estimatedTime,
+      currency: (quotation as any)?.quotedTotalFee?.currency || 'SGD',
+      addressId,
+    });
   } catch (error: any) {
     res.status(500).json({ error: error.message });
   }
@@ -124,17 +136,25 @@ router.post('/create', authenticate, authorizeRole('ADMIN'), async (req: AuthReq
       ],
     });
 
+    const trackingUrl = (deliveryOrder as any)?.shareLink || (deliveryOrder as any)?.data?.shareLink || null;
+    const deliveryStatus = (deliveryOrder as any)?.status || (deliveryOrder as any)?.data?.status || 'OUT_FOR_DELIVERY';
+
     // Update order with Lalamove details
     await prisma.order.update({
       where: { id: orderId },
       data: {
         lalamoveOrderId: deliveryOrder.orderId,
-        lalamoveStatus: deliveryOrder.status,
+        lalamoveStatus: deliveryStatus,
+        lalamoveTrackingUrl: trackingUrl,
         status: 'OUT_FOR_DELIVERY',
       },
     });
 
-    res.json(deliveryOrder);
+    res.json({
+      ...deliveryOrder,
+      shareLink: trackingUrl,
+      status: deliveryStatus,
+    });
   } catch (error: any) {
     res.status(500).json({ error: error.message });
   }
@@ -160,8 +180,25 @@ router.get('/track/:orderId', authenticate, async (req: AuthRequest, res) => {
     }
 
     const deliveryStatus = await lalamoveService.getOrderDetails(order.lalamoveOrderId);
+    const shareLink = (deliveryStatus as any)?.shareLink || (deliveryStatus as any)?.data?.shareLink || order.lalamoveTrackingUrl;
+    const status = (deliveryStatus as any)?.status || (deliveryStatus as any)?.data?.status;
 
-    res.json(deliveryStatus);
+    // Refresh stored tracking URL/status if new info is available
+    if (shareLink || status) {
+      await prisma.order.update({
+        where: { id: order.id },
+        data: {
+          lalamoveTrackingUrl: shareLink || order.lalamoveTrackingUrl,
+          lalamoveStatus: status || order.lalamoveStatus,
+        },
+      });
+    }
+
+    res.json({
+      ...deliveryStatus,
+      shareLink: shareLink || null,
+      status: status || order.lalamoveStatus || 'OUT_FOR_DELIVERY',
+    });
   } catch (error: any) {
     res.status(500).json({ error: error.message });
   }
@@ -183,7 +220,6 @@ router.get('/driver/:orderId', authenticate, async (req: AuthRequest, res) => {
     }
 
     const driverLocation = await lalamoveService.getDriverLocation(order.lalamoveOrderId);
-
     res.json(driverLocation);
   } catch (error: any) {
     res.status(500).json({ error: error.message });

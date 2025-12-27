@@ -23,6 +23,7 @@ interface CreateOrderBody {
   paymentMethod: PaymentMethod;
   deliveryNotes?: string;
   useHostedCheckout?: boolean;
+  deliveryFee?: number; // From Lalamove quote
 }
 
 interface CancelOrderBody {
@@ -91,9 +92,10 @@ router.post(
       });
     }
 
-    // Calculate delivery fee
-    const deliveryFee =
-      subtotal >= Number(process.env.FREE_DELIVERY_THRESHOLD ?? 100)
+    // Calculate delivery fee (use passed fee from quote, or fallback to env config)
+    const deliveryFee = req.body.deliveryFee !== undefined
+      ? req.body.deliveryFee
+      : subtotal >= Number(process.env.FREE_DELIVERY_THRESHOLD ?? 100)
         ? 0
         : Number(process.env.DELIVERY_FEE ?? 5);
 

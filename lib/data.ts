@@ -1,21 +1,21 @@
 import { User, Product } from './types';
 
-export const MOCK_USER: User = {
+export const MOCK_USER = {
   name: "Arjun Mehta",
   phone: "+65 9123 4567",
   email: "arjun.m@example.sg",
   tier: "Gold",
   addresses: [
-    { id: 1, type: "Home", text: "38 Draycott Dr, #12-04, Singapore 259428", isDefault: true },
-    { id: 2, type: "Work", text: "MBFC Tower 1, 8 Marina Blvd, Singapore 018981", isDefault: false }
+    { id: "1", type: "Home", text: "38 Draycott Dr, #12-04, Singapore 259428", isDefault: true },
+    { id: "2", type: "Work", text: "MBFC Tower 1, 8 Marina Blvd, Singapore 018981", isDefault: false }
   ],
   orders: [
     { id: "SG-7782", date: "Dec 10", total: 345.50, items: "Hibiki Harmony + 2", status: "Delivered" },
     { id: "SG-7701", date: "Dec 02", total: 85.00, items: "Roku Gin", status: "Delivered" }
   ]
-};
+} as unknown as User;
 
-export const PRODUCTS: Product[] = [
+export const PRODUCTS = [
   {
     id: 1, name: "ANCHOR STRONG BEER CAN 490ML X 24", brand: "Anchor", price: 98, category: "BEER", volume: "CTN", abv: "6.0%", desc: "Strong full-bodied beer with a smooth finish.", image: "https://images.unsplash.com/photo-1618885472179-5e474019f2a9?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w4NDM1NTB8MHwxfHNlYXJjaHwxfHxiZWVyJTIwYm90dGxlfGVufDB8MXx8fDE3NjYzMzI1NDN8MA&ixlib=rb-4.1.0&q=80&w=1080", tags: ["strong", "beer", "party"], time: "Today",
     stock: 0,
@@ -246,7 +246,7 @@ export const PRODUCTS: Product[] = [
     stock: 0,
     status: ''
   }
-];
+] as unknown as Product[];
 
 export const CATEGORIES = [
   'All',

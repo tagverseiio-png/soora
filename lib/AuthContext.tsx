@@ -23,10 +23,14 @@ const AuthContext = createContext<AuthContextType>({
   loading: true,
   error: null,
   isAuthenticated: false,
+  selectedAddress: null,
+  addresses: [],
   signIn: async () => {},
   signOut: async () => {},
   signUp: async () => {},
   refreshUser: async () => {},
+  setSelectedAddress: () => {},
+  fetchAddresses: async () => {},
 });
 
 export const useAuth = () => {

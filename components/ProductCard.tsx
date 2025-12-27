@@ -59,8 +59,8 @@ export default function ProductCard({ product, count, onAdd, onRemove }: Product
             alt={product.name}
             className="w-full h-full object-cover group-hover:scale-105 transition-all duration-700 ease-out"
           />
-             {product.tags.includes("Bestseller") && (
-                <span className="absolute top-4 left-4 text-[10px] font-bold uppercase tracking-widest text-[#1d1d1f] bg-white/90 backdrop-blur-sm px-3 py-1.5 rounded-full shadow-sm">Bestseller</span>
+             {Array.isArray(product.tags) && product.tags.includes("Bestseller") && (
+               <span className="absolute top-4 left-4 text-[10px] font-bold uppercase tracking-widest text-[#1d1d1f] bg-white/90 backdrop-blur-sm px-3 py-1.5 rounded-full shadow-sm">Bestseller</span>
              )}
 
              <div className="absolute bottom-4 right-4 bg-white/80 backdrop-blur-md border border-white/40 px-3 py-1.5 rounded-full shadow-sm flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity duration-300 translate-y-2 group-hover:translate-y-0">

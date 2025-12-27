@@ -6,13 +6,25 @@ export const validators = {
     body('email').isEmail().normalizeEmail(),
     body('password').isLength({ min: 8 }).withMessage('Password must be at least 8 characters'),
     body('name').optional().trim().isLength({ min: 2 }),
-    body('phone').optional().matches(/^(\+65)?[689]\d{7}$/),
+    body('phone')
+      .optional()
+      .matches(/^(\+65)?[89]\d{7}$/)
+      .withMessage('Please enter a valid Singapore mobile number (+65 followed by 8 digits starting with 8 or 9)'),
     body('dateOfBirth').optional().isISO8601(),
   ],
 
   login: [
     body('email').isEmail().normalizeEmail(),
     body('password').notEmpty(),
+  ],
+
+  // Profile validators
+  updateProfile: [
+    body('name').optional().trim().isLength({ min: 2 }),
+    body('phone')
+      .optional()
+      .matches(/^(\+65)?[89]\d{7}$/)
+      .withMessage('Please enter a valid Singapore mobile number (+65 followed by 8 digits starting with 8 or 9)'),
   ],
 
   // Product validators

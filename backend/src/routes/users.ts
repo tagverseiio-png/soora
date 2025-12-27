@@ -53,8 +53,14 @@ router.get('/profile', authenticate, async (req: AuthRequest, res: Response) => 
 router.put(
   '/profile',
   authenticate,
+  validators.updateProfile,
   async (req: AuthRequest<ParamsDictionary, any, UpdateProfileBody>, res: Response) => {
   try {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json({ errors: errors.array() });
+    }
+
     const { name, phone } = req.body;
 
     const user = await prisma.user.update({

@@ -31,7 +31,11 @@ export default function CheckoutPage() {
             router.push('/');
             return;
         }
-        if (!selectedAddress && addresses.length > 0) {
+        
+        // Sync with context address if available, otherwise fallback to first address
+        if (selectedAddress) {
+            setSelectedAddr(selectedAddress);
+        } else if (addresses.length > 0) {
             setSelectedAddr(addresses[0]);
         }
     }, [user, selectedAddress, addresses, router]);
@@ -51,6 +55,7 @@ export default function CheckoutPage() {
         } catch (_) {}
     }, []);
 
+
     // Fetch delivery quote when address is selected
     useEffect(() => {
         const fetchQuote = async () => {
@@ -61,9 +66,15 @@ export default function CheckoutPage() {
             setQuoteLoading(true);
             setQuoteError(null);
             try {
+                // Calculate current subtotal to send to backend for free delivery logic
+                const currentSubtotal = cart.reduce((acc, item) => acc + (item.price * (item.quantity || 1)), 0);
+                
                 const quote = await apiClient.request<any>('/delivery/quote', {
                     method: 'POST',
-                    body: JSON.stringify({ addressId: selectedAddr.id }),
+                    body: JSON.stringify({ 
+                        addressId: selectedAddr.id,
+                        subtotal: currentSubtotal 
+                    }),
                 });
                 setDeliveryQuote(quote);
             } catch (error: any) {
@@ -75,7 +86,7 @@ export default function CheckoutPage() {
             }
         };
         fetchQuote();
-    }, [selectedAddr?.id]);
+    }, [selectedAddr?.id, cart]); // Re-fetch if cart changes (e.g. amount changes crossing threshold)
 
     if (!user || !user.name || !user.phone) {
         return (

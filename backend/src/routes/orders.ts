@@ -7,6 +7,7 @@ import { stripeService } from '../services/stripe.service';
 import { lalamoveService } from '../services/lalamove.service';
 import { ParamsDictionary } from 'express-serve-static-core';
 import { prisma } from '../utils/prisma';
+import { geocodeSingaporeAddress } from '../utils/geocode';
 
 const router = Router();
 
@@ -23,7 +24,7 @@ interface CreateOrderBody {
   paymentMethod: PaymentMethod;
   deliveryNotes?: string;
   useHostedCheckout?: boolean;
-  deliveryFee?: number; // From Lalamove quote
+  deliveryFee?: number; // Ignored in favor of backend calculation
 }
 
 interface CancelOrderBody {
@@ -92,12 +93,66 @@ router.post(
       });
     }
 
-    // Calculate delivery fee (use passed fee from quote, or fallback to env config)
-    const deliveryFee = req.body.deliveryFee !== undefined
-      ? req.body.deliveryFee
-      : subtotal >= Number(process.env.FREE_DELIVERY_THRESHOLD ?? 100)
-        ? 0
-        : Number(process.env.DELIVERY_FEE ?? 5);
+    // Calculate delivery fee from backend (Lalamove)
+    let deliveryFee = Number(process.env.DELIVERY_FEE ?? 5); // Default fallback
+
+    try {
+        // 1. Resolve Store Location
+        const storeAddrInput = process.env.STORE_ADDRESS || 'Singapore';
+        const storePostal = process.env.STORE_POSTAL || '';
+        let storeLat = 1.3521;
+        let storeLng = 103.8198;
+        let storeAddressStr = storePostal ? `${storeAddrInput}, Singapore ${storePostal}` : `${storeAddrInput}, Singapore`;
+
+        const storeGeo = await geocodeSingaporeAddress(storeAddrInput, storePostal);
+        if (storeGeo) {
+            storeLat = storeGeo.lat;
+            storeLng = storeGeo.lng;
+            storeAddressStr = storeGeo.displayName;
+        }
+
+        // 2. Resolve Customer Location
+        let custLat = address.latitude || 0;
+        let custLng = address.longitude || 0;
+        let custAddressStr = `${address.street}, Singapore ${address.postalCode}`;
+
+        if (!address.latitude || !address.longitude) {
+            const custGeo = await geocodeSingaporeAddress(address.street, address.postalCode);
+            if (custGeo) {
+                custLat = custGeo.lat;
+                custLng = custGeo.lng;
+                custAddressStr = custGeo.displayName;
+            } else {
+                // Fallback to center if geocoding fails (usually results in base fee or error)
+                custLat = 1.3521; 
+                custLng = 103.8198;
+            }
+        }
+
+        // 3. Get Lalamove Quote
+        const quotation = await lalamoveService.getDeliveryEstimate(
+            storeLat,
+            storeLng,
+            custLat,
+            custLng,
+            storeAddressStr,
+            custAddressStr
+        );
+
+        // 4. Extract Fee
+        const quoteData = (quotation as any)?.data;
+        if (quoteData?.priceBreakdown?.total) {
+            deliveryFee = parseFloat(quoteData.priceBreakdown.total);
+        }
+    } catch (err: any) {
+        console.error('[Order Create] Failed to calculate Lalamove fee:', err.message);
+        // Keep default deliveryFee
+    }
+
+    // Apply Free Delivery Threshold (Business Rule)
+    if (subtotal >= Number(process.env.FREE_DELIVERY_THRESHOLD ?? 100)) {
+      deliveryFee = 0;
+    }
 
     const total = subtotal + deliveryFee;
 

@@ -9,7 +9,7 @@ const router = Router();
 // Get delivery quotation
 router.post('/quote', authenticate, async (req: AuthRequest, res) => {
   try {
-    const { addressId } = req.body;
+    const { addressId, subtotal } = req.body;
 
     const address = await prisma.address.findUnique({
       where: { id: addressId },
@@ -75,16 +75,29 @@ router.post('/quote', authenticate, async (req: AuthRequest, res) => {
     }
 
     // Extract delivery fee from quotation
-    const deliveryFee = (quotation as any)?.quotedTotalFee?.amount 
-      ? parseFloat((quotation as any).quotedTotalFee.amount) / 100 
-      : parseFloat(process.env.DELIVERY_FEE || '5');
+    let deliveryFee = parseFloat(process.env.DELIVERY_FEE || '5');
+    
+    // Parse Lalamove V3 response: { data: { priceBreakdown: { total: "10.7" } } }
+    const quoteData = (quotation as any)?.data;
+    if (quoteData?.priceBreakdown?.total) {
+       deliveryFee = parseFloat(quoteData.priceBreakdown.total);
+    }
+
+    // Apply Free Delivery Logic if subtotal is provided
+    if (subtotal !== undefined) {
+       const threshold = Number(process.env.FREE_DELIVERY_THRESHOLD ?? 100);
+       if (Number(subtotal) >= threshold) {
+         deliveryFee = 0;
+       }
+    }
+
     const estimatedTime = (quotation as any)?.estimatedTimeTaken || null;
 
     res.json({
       quotation,
       deliveryFee,
       estimatedTime,
-      currency: (quotation as any)?.quotedTotalFee?.currency || 'SGD',
+      currency: quoteData?.priceBreakdown?.currency || 'SGD',
       addressId,
       usedAddress: dropoffAddress,
       usedCoordinates: { lat, lng },

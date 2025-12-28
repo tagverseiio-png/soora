@@ -4,14 +4,12 @@ import dotenv from 'dotenv';
 
 dotenv.config();
 
-interface LalamoveLocation {
-  lat: string;
-  lng: string;
-  address: string;
-}
-
 interface LalamoveStop {
-  location: LalamoveLocation;
+  coordinates: {
+    lat: string;
+    lng: string;
+  };
+  address: string;
   name?: string;
   phone?: string;
   remarks?: string;
@@ -108,7 +106,10 @@ export class LalamoveService {
         isRouteOptimized: request.isRouteOptimized ?? true,
         // Omit item to minimize schema issues in sandbox; can re-enable later
         serviceType: request.serviceType,
-        stops: request.stops,
+        stops: request.stops.map(stop => ({
+          coordinates: stop.coordinates,
+          address: stop.address
+        })),
         scheduleAt: request.scheduleAt,
         specialRequests: request.specialRequests,
       };
@@ -272,20 +273,20 @@ export class LalamoveService {
       serviceType: 'MOTORCYCLE', // Options: MOTORCYCLE, CAR, VAN
       stops: [
         {
-          location: {
+          coordinates: {
             lat: pickupLat.toString(),
             lng: pickupLng.toString(),
-            address: pickupAddress,
           },
+          address: pickupAddress,
           name: 'Soora Store',
           phone: process.env.STORE_PHONE || '+6590000000',
         },
         {
-          location: {
+          coordinates: {
             lat: dropoffLat.toString(),
             lng: dropoffLng.toString(),
-            address: dropoffAddress,
           },
+          address: dropoffAddress,
           name: 'Recipient',
         },
       ],

@@ -61,6 +61,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         const userData = await authApi.getCurrentUser();
         setUser(userData);
         setError(null);
+        // Fetch addresses now that we have a user
+        await fetchAddresses();
       }
     } catch (err) {
       localStorage.removeItem('auth_token');

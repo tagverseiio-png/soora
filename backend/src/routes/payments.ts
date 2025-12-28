@@ -2,9 +2,110 @@ import express, { Router, Request, Response } from 'express';
 import { stripeService } from '../services/stripe.service';
 import { authenticate, AuthRequest } from '../middleware/auth';
 import { prisma } from '../utils/prisma';
+import { lalamoveService } from '../services/lalamove.service';
+import { geocodeSingaporeAddress } from '../utils/geocode';
 
 const router = Router();
 const FRONTEND_URL = process.env.FRONTEND_URL || 'http://localhost:3000';
+
+// Store Location (Default to Orchard Road if not set)
+const STORE_LAT = parseFloat(process.env.STORE_LAT || '1.3044');
+const STORE_LNG = parseFloat(process.env.STORE_LNG || '103.8448');
+const STORE_ADDRESS = process.env.STORE_ADDRESS || '1 Orchard Road, Singapore 238825';
+
+// Helper: Trigger Lalamove Delivery
+async function triggerLalamoveDelivery(orderId: string) {
+  try {
+    const order = await prisma.order.findUnique({
+      where: { id: orderId },
+      include: { address: true, user: true },
+    });
+
+    if (!order) {
+      console.error(`[Lalamove] Order ${orderId} not found.`);
+      return;
+    }
+
+    // 1. Ensure User Address Coordinates
+    let { latitude, longitude } = order.address;
+    if (!latitude || !longitude) {
+      console.log(`[Lalamove] Geocoding address for Order ${orderId}...`);
+      const geo = await geocodeSingaporeAddress(order.address.street, order.address.postalCode);
+      if (geo) {
+        latitude = geo.lat;
+        longitude = geo.lng;
+        // Update address with coords for future use
+        await prisma.address.update({
+          where: { id: order.addressId },
+          data: { latitude, longitude },
+        });
+      } else {
+        console.error(`[Lalamove] Failed to geocode address for Order ${orderId}. Cannot create delivery.`);
+        return;
+      }
+    }
+
+    // 2. Get Quotation
+    console.log(`[Lalamove] Requesting quotation for Order ${orderId}...`);
+    const quoteResponse = await lalamoveService.getDeliveryEstimate(
+      STORE_LAT,
+      STORE_LNG,
+      latitude!,
+      longitude!,
+      STORE_ADDRESS,
+      `${order.address.street} ${order.address.unit || ''}, Singapore ${order.address.postalCode}`
+    );
+
+    const quotationId = quoteResponse.data?.quotationId;
+    const stops = quoteResponse.data?.stops;
+
+    if (!quotationId || !stops || stops.length < 2) {
+      console.error(`[Lalamove] Invalid quotation response for Order ${orderId}:`, JSON.stringify(quoteResponse));
+      return;
+    }
+
+    const pickupStopId = stops[0].stopId;
+    const dropoffStopId = stops[1].stopId;
+
+    // 3. Create Order
+    console.log(`[Lalamove] Creating delivery order for Order ${orderId}...`);
+    const deliveryOrder = await lalamoveService.createOrder({
+      quotationId,
+      sender: {
+        stopId: pickupStopId,
+        name: 'Soora Store',
+        phone: process.env.STORE_PHONE || '+6590000000',
+      },
+      recipients: [
+        {
+          stopId: dropoffStopId,
+          name: order.customerName,
+          phone: order.customerPhone,
+          remarks: order.deliveryNotes || 'Fragile - Alcohol',
+        },
+      ],
+      metadata: {
+        orderId: order.id,
+        orderNumber: order.orderNumber,
+      },
+    });
+
+    const lalamoveOrderId = deliveryOrder.data?.orderId;
+    console.log(`[Lalamove] Delivery created! ID: ${lalamoveOrderId}`);
+
+    // 4. Update Order Record
+    await prisma.order.update({
+      where: { id: orderId },
+      data: {
+        lalamoveOrderId,
+        lalamoveStatus: 'ASSIGNING_DRIVER', // Initial status
+      },
+    });
+
+  } catch (error: any) {
+    console.error(`[Lalamove] Failed to trigger delivery for Order ${orderId}:`, error.message);
+  }
+}
 
 // Create payment intent
 router.post('/create-intent', authenticate, async (req: AuthRequest, res: Response) => {
@@ -114,22 +215,47 @@ router.post('/webhook', express.raw({ type: 'application/json' }), async (req: R
             },
           });
           console.log('Checkout session completed for order:', orderId);
+          // Trigger Lalamove
+          triggerLalamoveDelivery(orderId);
         }
         break;
       }
       case 'payment_intent.succeeded':
         const paymentIntent = event.data.object;
+        const orderId = paymentIntent.metadata?.orderId; // Usually in metadata
         
         // Update order status
-        await prisma.order.updateMany({
-          where: { stripePaymentId: paymentIntent.id },
-          data: {
-            paymentStatus: 'COMPLETED',
-            status: 'CONFIRMED',
-          },
-        });
-        
-        console.log('Payment succeeded:', paymentIntent.id);
+        // Note: updateMany doesn't return the records, so we find first if orderId missing
+        if (orderId) {
+             await prisma.order.update({
+                where: { id: orderId },
+                data: {
+                    paymentStatus: 'COMPLETED',
+                    status: 'CONFIRMED',
+                }
+             });
+             console.log('Payment succeeded for order:', orderId);
+             triggerLalamoveDelivery(orderId);
+        } else {
+            // Fallback: find by payment intent
+            const orders = await prisma.order.findMany({
+              where: { stripePaymentId: paymentIntent.id },
+            });
+            
+            await prisma.order.updateMany({
+              where: { stripePaymentId: paymentIntent.id },
+              data: {
+                paymentStatus: 'COMPLETED',
+                status: 'CONFIRMED',
+              },
+            });
+            console.log('Payment succeeded:', paymentIntent.id);
+            
+            // Trigger Lalamove for found orders
+            for (const o of orders) {
+                triggerLalamoveDelivery(o.id);
+            }
+        }
         break;
 
       case 'payment_intent.payment_failed':

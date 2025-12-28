@@ -37,3 +37,4 @@ yarn-error.log*
 next-env.d.ts
 
 .kluster
+backend/backend.zip

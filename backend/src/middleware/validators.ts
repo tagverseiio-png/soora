@@ -3,19 +3,41 @@ import { body, param, query, ValidationChain } from 'express-validator';
 export const validators = {
   // Auth validators
   register: [
-    body('email').isEmail().normalizeEmail(),
-    body('password').isLength({ min: 8 }).withMessage('Password must be at least 8 characters'),
-    body('name').optional().trim().isLength({ min: 2 }),
+    body('email')
+      .isEmail()
+      .normalizeEmail(),
+
+    body('password')
+      .isLength({ min: 6 })
+      .withMessage('Password must be at least 6 characters'),
+
+    body('name')
+      .optional()
+      .trim()
+      .isLength({ min: 1 }),
+
     body('phone')
       .optional()
-      .matches(/^(\+65)?[89]\d{7}$/)
-      .withMessage('Please enter a valid Singapore mobile number (+65 followed by 8 digits starting with 8 or 9)'),
-    body('dateOfBirth').optional().isISO8601(),
+      .matches(/^\+?[0-9]{7,15}$/)
+      .withMessage('Please enter a valid phone number'),
+
+    body('dateOfBirth')
+      .optional()
+      .isDate(),
   ],
 
   login: [
     body('email').isEmail().normalizeEmail(),
     body('password').notEmpty(),
+  ],
+
+  forgotPassword: [
+    body('email').isEmail().normalizeEmail().withMessage('Please provide a valid email'),
+  ],
+
+  resetPassword: [
+    body('token').notEmpty().withMessage('Reset token is required'),
+    body('password').isLength({ min: 6 }).withMessage('Password must be at least 6 characters'),
   ],
 
   // Profile validators

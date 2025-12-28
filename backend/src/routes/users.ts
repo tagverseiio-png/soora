@@ -244,7 +244,23 @@ router.get(
         tier: true,
         ageVerified: true,
         emailVerified: true,
+        isActive: true,
         createdAt: true,
+        orders: {
+          select: {
+            id: true,
+            total: true,
+            status: true,
+            createdAt: true,
+            items: {
+              select: {
+                productName: true,
+                quantity: true,
+                price: true,
+              },
+            },
+          },
+        },
       },
       orderBy: { createdAt: 'desc' },
     });

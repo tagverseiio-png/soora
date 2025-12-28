@@ -160,23 +160,35 @@ export default function ShopPage() {
     }, [user, isProfileOpen]);
 
     // Fetch orders when user is authenticated
-    useEffect(() => {
-        const fetchOrders = async () => {
-            if (!user) {
-                setOrders([]);
-                return;
-            }
-            try {
-                const response = await apiClient.request('/orders/my-orders');
-                const orderList = Array.isArray(response) ? response : (response.orders || []);
-                setOrders(orderList);
-            } catch (error) {
-                console.error('Failed to fetch orders:', error);
-                setOrders([]);
-            }
-        };
-        fetchOrders();
+    const fetchOrders = useCallback(async () => {
+        if (!user) {
+            setOrders([]);
+            return;
+        }
+        try {
+            const response = await apiClient.request('/orders/my-orders');
+            const orderList = Array.isArray(response) ? response : (response.orders || []);
+            setOrders(orderList);
+        } catch (error) {
+            console.error('Failed to fetch orders:', error);
+            setOrders([]);
+        }
     }, [user]);
+
+    useEffect(() => {
+        fetchOrders();
+    }, [fetchOrders]);
+
+    // Auto-poll orders when profile panel is open
+    useEffect(() => {
+        if (!isProfileOpen || !user) return;
+
+        const interval = setInterval(() => {
+            fetchOrders();
+        }, 15000); // Poll every 15 seconds
+
+        return () => clearInterval(interval);
+    }, [isProfileOpen, user, fetchOrders]);
 
     const handleTrackDelivery = async (order: any) => {
         if (!order?.id) return;

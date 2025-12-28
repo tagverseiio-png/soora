@@ -62,10 +62,11 @@ const statusToBadge: Record<string, { label: string; variant: "default" | "secon
   Low: { label: "Low", variant: "destructive" },
   "Low Stock": { label: "Low stock", variant: "destructive" },
   Hidden: { label: "Hidden", variant: "outline" },
-  "ASSIGNING_DRIVER": { label: "Assigning Driver", variant: "outline" },
+  "ASSIGNING_DRIVER": { label: "Finding Driver", variant: "outline" },
+  "ASSIGNED": { label: "Driver Assigned", variant: "default" },
   "PICKED_UP": { label: "Picked Up", variant: "secondary" },
-  "ON_GOING": { label: "Ongoing", variant: "default" },
-  "COMPLETED": { label: "Completed", variant: "secondary" },
+  "ON_GOING": { label: "On Way", variant: "default" },
+  "COMPLETED": { label: "Delivered", variant: "secondary" },
   "CANCELED": { label: "Canceled", variant: "destructive" },
   "EXPIRED": { label: "Expired", variant: "destructive" },
   Active: { label: "Active", variant: "default" },
@@ -90,13 +91,16 @@ export default function AdminPanel() {
 
   // Order Management State
   const [orderSearch, setOrderSearch] = useState("");
-  const [orderStatus, setOrderStatus] = useState("All");
+  const [orderStatus, setOrderStatus] = useState("Ongoing");
+  const [currentPage, setCurrentPage] = useState(1);
+  const itemsPerPage = 10;
   const [selectedOrder, setSelectedOrder] = useState<any | null>(null);
   const [isLocationDialogOpen, setIsLocationDialogOpen] = useState(false);
   const [selectedLocation, setSelectedLocation] = useState("");
 
   // User Management State
   const [userSearch, setUserSearch] = useState("");
+  const [selectedUser, setSelectedUser] = useState<any | null>(null);
 
   // Product Management State
   const [products, setProducts] = useState<Product[]>([]);
@@ -136,7 +140,7 @@ export default function AdminPanel() {
         const ordersList = rawOrders.map((o: any) => ({
           ...o,
           customer: (o.user?.name || o.user?.email || '').trim(),
-          items: Array.isArray(o.items) ? o.items.length : 0,
+          itemsCount: Array.isArray(o.items) ? o.items.length : 0,
           channel: (o.paymentMethod || '').toUpperCase(),
           placed: o.createdAt ? new Date(o.createdAt).toLocaleDateString(undefined, { month: 'short', day: '2-digit' }) : '',
           stripePaymentId: o.stripePaymentId,
@@ -148,7 +152,13 @@ export default function AdminPanel() {
 
         // Fetch users - use admin endpoint
         const usersRes = await apiClient.request('/users/admin/list');
-        const usersList = Array.isArray(usersRes) ? usersRes : (usersRes.users || []);
+        const rawUsers = Array.isArray(usersRes) ? usersRes : (usersRes.users || []);
+        const usersList = rawUsers.map((u: any) => ({
+          ...u,
+          spend: Array.isArray(u.orders) ? u.orders.reduce((sum: number, o: any) => sum + (o.total || 0), 0) : 0,
+          ordersCount: Array.isArray(u.orders) ? u.orders.length : 0,
+          status: u.isActive === false ? "Hidden" : "Active"
+        }));
         setUsers(usersList);
       } catch (error) {
         console.error('Failed to fetch admin data:', error);
@@ -198,20 +208,32 @@ export default function AdminPanel() {
   );
 
   const filteredOrders = useMemo(() => {
-    return orders.filter((order) => {
+    const searchFiltered = orders.filter((order) => {
       const matchesSearch =
         (order.id || '').toLowerCase().includes(orderSearch.toLowerCase()) ||
         (order.customer || '').toLowerCase().includes(orderSearch.toLowerCase());
 
-      let matchesStatus = true;
-      if (orderStatus === "Assigning") matchesStatus = order.status === "ASSIGNING_DRIVER";
-      else if (orderStatus === "Ongoing") matchesStatus = ["ON_GOING", "PICKED_UP"].includes(order.status);
-      else if (orderStatus === "Completed") matchesStatus = order.status === "COMPLETED";
-      else if (orderStatus === "Canceled") matchesStatus = ["CANCELED", "EXPIRED", "REJECTED"].includes(order.status);
+      const terminalStates = ['DELIVERED', 'CANCELLED', 'REFUNDED'];
+      const lalamoveTerminal = ['COMPLETED', 'CANCELED', 'EXPIRED', 'REJECTED'];
+      
+      const isTerminal = terminalStates.includes(order.status) || lalamoveTerminal.includes(order.lalamoveStatus);
 
-      return matchesSearch && matchesStatus;
+      if (orderStatus === "Ongoing") return matchesSearch && !isTerminal;
+      if (orderStatus === "Completed") return matchesSearch && isTerminal;
+
+      return matchesSearch;
     });
+
+    return searchFiltered;
   }, [orders, orderSearch, orderStatus]);
+
+  const paginatedOrders = useMemo(() => {
+    if (orderStatus !== "Completed") return filteredOrders;
+    const startIndex = (currentPage - 1) * itemsPerPage;
+    return filteredOrders.slice(startIndex, startIndex + itemsPerPage);
+  }, [filteredOrders, orderStatus, currentPage]);
+
+  const totalPages = Math.ceil(filteredOrders.length / itemsPerPage);
 
   const filteredUsers = useMemo(() => {
     return users.filter(user =>
@@ -309,7 +331,7 @@ export default function AdminPanel() {
         const ordersList = rawOrders.map((o: any) => ({
           ...o,
           customer: (o.user?.name || o.user?.email || '').trim(),
-          items: Array.isArray(o.items) ? o.items.length : 0,
+          itemsCount: Array.isArray(o.items) ? o.items.length : 0,
           channel: (o.paymentMethod || '').toUpperCase(),
           placed: o.createdAt ? new Date(o.createdAt).toLocaleDateString(undefined, { month: 'short', day: '2-digit' }) : '',
           stripePaymentId: o.stripePaymentId,
@@ -451,7 +473,39 @@ export default function AdminPanel() {
                 <p className="text-sm text-slate-500 font-medium">Manage your store operations.</p>
               </div>
               <div className="flex flex-wrap gap-3">
-                <Button variant="outline" className="gap-2 border-slate-200 bg-white/50 hover:bg-white hover:border-indigo-200 hover:text-indigo-600 transition-all shadow-sm" onClick={async () => { setSearch(""); setCategory("All"); setLoading(true); try { const productsRes = await apiClient.request('/products?includeInactive=true'); const productsList = Array.isArray(productsRes) ? productsRes : (productsRes.products || []); setProducts(productsList); const ordersRes = await apiClient.request('/orders/admin/list'); const rawOrders = Array.isArray(ordersRes) ? ordersRes : (ordersRes.orders || []); const ordersList = rawOrders.map((o: any) => ({ ...o, customer: (o.user?.name || o.user?.email || '').trim(), items: Array.isArray(o.items) ? o.items.length : 0, channel: (o.paymentMethod || '').toUpperCase(), placed: o.createdAt ? new Date(o.createdAt).toLocaleDateString(undefined, { month: 'short', day: '2-digit' }) : '', stripePaymentId: o.stripePaymentId, paymentStatus: o.paymentStatus, lalamoveStatus: o.lalamoveStatus, lalamoveTrackingUrl: o.lalamoveTrackingUrl, })); setOrders(ordersList); const usersRes = await apiClient.request('/users/admin/list'); const usersList = Array.isArray(usersRes) ? usersRes : (usersRes.users || []); setUsers(usersList); } catch (e) { console.error('Failed to refresh admin data:', e); } finally { setLoading(false); } }}>
+                <Button variant="outline" className="gap-2 border-slate-200 bg-white/50 hover:bg-white hover:border-indigo-200 hover:text-indigo-600 transition-all shadow-sm" onClick={async () => { 
+                  setSearch(""); 
+                  setCategory("All"); 
+                  setLoading(true); 
+                  try { 
+                    const productsRes = await apiClient.request('/products?includeInactive=true'); 
+                    const productsList = Array.isArray(productsRes) ? productsRes : (productsRes.products || []); 
+                    setProducts(productsList); 
+                    
+                    const ordersRes = await apiClient.request('/orders/admin/list'); 
+                    const rawOrders = Array.isArray(ordersRes) ? ordersRes : (ordersRes.orders || []); 
+                    const ordersList = rawOrders.map((o: any) => ({ 
+                      ...o, 
+                      customer: (o.user?.name || o.user?.email || '').trim(), 
+                      itemsCount: Array.isArray(o.items) ? o.items.length : 0, 
+                      channel: (o.paymentMethod || '').toUpperCase(), 
+                      placed: o.createdAt ? new Date(o.createdAt).toLocaleDateString(undefined, { month: 'short', day: '2-digit' }) : '', 
+                      stripePaymentId: o.stripePaymentId, 
+                      paymentStatus: o.paymentStatus, 
+                      lalamoveStatus: o.lalamoveStatus, 
+                      lalamoveTrackingUrl: o.lalamoveTrackingUrl, 
+                    })); 
+                    setOrders(ordersList); 
+                    
+                    const usersRes = await apiClient.request('/users/admin/list'); 
+                    const usersList = Array.isArray(usersRes) ? usersRes : (usersRes.users || []); 
+                    setUsers(usersList); 
+                  } catch (e) { 
+                    console.error('Failed to refresh admin data:', e); 
+                  } finally { 
+                    setLoading(false); 
+                  } 
+                }}>
                   <RefreshCw className="h-4 w-4" /> Refresh Data
                 </Button>
                 <Button className="gap-2 bg-indigo-600 hover:bg-indigo-700 text-white shadow-lg shadow-indigo-600/20 shadow-indigo-600/10 transition-all hover:shadow-indigo-600/30" asChild>
@@ -766,18 +820,18 @@ export default function AdminPanel() {
                     onChange={(e) => setOrderSearch(e.target.value)}
                     className="w-full border-slate-200 bg-white/80 focus:bg-white sm:w-64 transition-all"
                   />
-                  <Button variant="outline" size="sm" className="gap-2 border-slate-200 hover:border-indigo-300 hover:text-indigo-600">
-                    <ArrowUpRight className="h-4 w-4" /> Export
-                  </Button>
-                </div>
+                  </div>
               </CardHeader>
               <div className="px-6 py-4 border-b border-slate-100/50 bg-white/30 overflow-x-auto">
                 <div className="flex items-center gap-2">
-                  {["All", "Assigning", "Ongoing", "Completed", "Canceled"].map((status) => (
+                  {["Ongoing", "Completed"].map((status) => (
                     <button
                       key={status}
-                      onClick={() => setOrderStatus(status)}
-                      className={`px-4 py-1.5 rounded-full text-xs font-semibold transition-all ${orderStatus === status
+                      onClick={() => {
+                        setOrderStatus(status);
+                        setCurrentPage(1);
+                      }}
+                      className={`px-6 py-1.5 rounded-full text-xs font-bold transition-all ${orderStatus === status
                         ? "bg-indigo-600 text-white shadow-md shadow-indigo-600/20"
                         : "bg-white text-slate-600 hover:bg-indigo-50 hover:text-indigo-700 border border-slate-200"
                         }`}
@@ -800,7 +854,7 @@ export default function AdminPanel() {
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {filteredOrders.map((order) => {
+                    {paginatedOrders.map((order) => {
                       const badge = statusToBadge[order.status];
                       return (
                         <TableRow
@@ -808,11 +862,11 @@ export default function AdminPanel() {
                           className="border-slate-100 transition-colors hover:bg-slate-50/50 cursor-pointer"
                           onClick={() => setSelectedOrder(order)}
                         >
-                          <TableCell className="font-medium text-indigo-600 group-hover:underline">{order.id}</TableCell>
+                          <TableCell className="font-medium text-indigo-600 group-hover:underline">{order.orderNumber || order.id.slice(0, 8)}</TableCell>
                           <TableCell>
                             <div className="flex flex-col">
                               <span className="font-medium text-slate-900">{order.customer}</span>
-                              <span className="text-xs text-slate-400">{order.items} items</span>
+                              <span className="text-xs text-slate-400">{order.itemsCount} items</span>
                             </div>
                           </TableCell>
                           <TableCell className="hidden md:table-cell">
@@ -841,10 +895,38 @@ export default function AdminPanel() {
                     })}
                   </TableBody>
                 </Table>
-                {filteredOrders.length === 0 && (
+                {paginatedOrders.length === 0 && (
                   <div className="flex flex-col items-center justify-center py-12 text-sm text-slate-500">
                     <ShoppingBasket className="h-10 w-10 text-slate-300 mb-2" />
                     No orders found matching criteria.
+                  </div>
+                )}
+                
+                {orderStatus === "Completed" && totalPages > 1 && (
+                  <div className="flex items-center justify-between px-6 py-4 border-t border-slate-100 bg-slate-50/30">
+                    <div className="text-xs text-slate-500 font-medium">
+                      Showing page {currentPage} of {totalPages}
+                    </div>
+                    <div className="flex gap-2">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
+                        disabled={currentPage === 1}
+                        className="h-8 text-xs font-bold"
+                      >
+                        Previous
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
+                        disabled={currentPage === totalPages}
+                        className="h-8 text-xs font-bold"
+                      >
+                        Next
+                      </Button>
+                    </div>
                   </div>
                 )}
               </CardContent>
@@ -866,30 +948,34 @@ export default function AdminPanel() {
                 />
               </CardHeader>
               <CardContent className="space-y-4 pt-4">
-                {filteredUsers.map((user) => {
-                  const badge = statusToBadge[user.status || 'Active'];
+                {filteredUsers.map((u) => {
+                  const badge = statusToBadge[u.status || 'Active'];
                   return (
-                    <div key={user.id} className="group flex items-center justify-between rounded-xl border border-slate-100 bg-white/50 px-4 py-3 transition-all hover:bg-white hover:shadow-md hover:border-indigo-100 hover:-translate-x-1">
+                    <div 
+                      key={u.id} 
+                      onClick={() => setSelectedUser(u)}
+                      className="group flex items-center justify-between rounded-xl border border-slate-100 bg-white/50 px-4 py-3 transition-all hover:bg-white hover:shadow-md hover:border-indigo-100 hover:-translate-x-1 cursor-pointer"
+                    >
                       <div className="flex items-center gap-3">
                         <div className="h-10 w-10 rounded-full bg-indigo-100 flex items-center justify-center text-indigo-700 font-bold text-sm ring-4 ring-white shadow-sm">
-                          {(user.name || user.email || 'U').charAt(0)}
+                          {(u.name || u.email || 'U').charAt(0).toUpperCase()}
                         </div>
                         <div className="flex flex-col">
-                          <span className="font-semibold text-base text-slate-900">{user.name || user.email}</span>
-                          <span className="text-xs text-slate-500 font-medium">{user.email}</span>
+                          <span className="font-semibold text-base text-slate-900">{u.name || u.email}</span>
+                          <span className="text-xs text-slate-500 font-medium">{u.email}</span>
                         </div>
                       </div>
                       <div className="flex flex-col items-end gap-1">
                         <div className="text-right">
-                          <span className="block font-bold text-sm text-slate-900">S${(user.spend || 0).toLocaleString()}</span>
-                          <span className="text-[10px] text-slate-400 uppercase tracking-wide">{user.tier || 'Basic'} Tier</span>
+                          <span className="block font-bold text-sm text-slate-900">S${(u.spend || 0).toLocaleString()}</span>
+                          <span className="text-[10px] text-slate-400 uppercase tracking-wide">{u.tier || 'Basic'} Tier</span>
                         </div>
                         <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold 
-                          ${user.status === 'Active' ? 'bg-emerald-100 text-emerald-700' : ''}
-                          ${user.status === 'Churn Risk' ? 'bg-rose-100 text-rose-700' : ''}
-                          ${user.status === 'Invite Sent' ? 'bg-slate-100 text-slate-600' : ''}
+                          ${u.status === 'Active' ? 'bg-emerald-100 text-emerald-700' : ''}
+                          ${u.status === 'Hidden' ? 'bg-slate-100 text-slate-600' : ''}
+                          ${u.status === 'Churn Risk' ? 'bg-rose-100 text-rose-700' : ''}
                         `}>
-                          {user.status || 'Active'}
+                          {u.status || 'Active'}
                         </span>
                       </div>
                     </div>
@@ -990,172 +1076,563 @@ export default function AdminPanel() {
           </DialogContent>
         </Dialog>
 
-        {selectedOrder && (
-          <Dialog open={!!selectedOrder} onOpenChange={(open) => !open && setSelectedOrder(null)}>
-            <DialogContent className="max-w-3xl bg-white/95 backdrop-blur-xl border-white/40 shadow-2xl p-0 overflow-hidden gap-0">
-              <DialogHeader className="p-6 pb-4 border-b border-slate-100/50 bg-slate-50/50">
-                <div className="flex items-center justify-between">
-                  <div className="flex flex-col gap-1">
-                    <DialogTitle className="text-xl font-bold flex items-center gap-2">
-                      Order #{selectedOrder.id}
-                      <Badge className="ml-2 bg-indigo-600 hover:bg-indigo-700">{selectedOrder.status}</Badge>
-                    </DialogTitle>
-                    <DialogDescription>
-                      Placed on {selectedOrder.placed} by <span className="font-semibold text-slate-700">{selectedOrder.customer}</span>
-                    </DialogDescription>
-                  </div>
-                  <div className="flex gap-2">
-                    <Button variant="outline" className="gap-2" onClick={async () => {
-                      try {
-                        const ordersRes = await apiClient.request('/orders/admin/list');
-                        const rawOrders = Array.isArray(ordersRes) ? ordersRes : (ordersRes.orders || []);
-                        const ordersList = rawOrders.map((o: any) => ({
-                          ...o,
-                          customer: (o.user?.name || o.user?.email || '').trim(),
-                          items: Array.isArray(o.items) ? o.items.length : 0,
-                          channel: (o.paymentMethod || '').toUpperCase(),
-                          placed: o.createdAt ? new Date(o.createdAt).toLocaleDateString(undefined, { month: 'short', day: '2-digit' }) : '',
-                          stripePaymentId: o.stripePaymentId,
-                          paymentStatus: o.paymentStatus,
-                          lalamoveStatus: o.lalamoveStatus,
-                          lalamoveTrackingUrl: o.lalamoveTrackingUrl,
-                        }));
-                        setOrders(ordersList);
-                        const updated = ordersList.find((o: any) => o.id === selectedOrder?.id) || selectedOrder;
-                        setSelectedOrder(updated);
-                      } catch (e) {
-                        console.error('Failed to refresh admin data:', e);
-                      }
-                    }}>
-                      <RefreshCw className="h-4 w-4" /> Refresh
-                    </Button>
-                    {selectedOrder?.status === 'CONFIRMED' && !selectedOrder?.lalamoveOrderId && (
-                      <Button className="bg-indigo-600 hover:bg-indigo-700 text-white" onClick={() => markPackedAndDispatch(selectedOrder)} disabled={dispatching}>
-                        {dispatching ? 'Dispatching…' : 'Mark as Packed & Dispatch'}
-                      </Button>
-                    )}
-                  </div>
-                </div>
-              </DialogHeader>
+                {selectedOrder && (
 
-              <div className="grid md:grid-cols-2 divide-y md:divide-y-0 md:divide-x divide-slate-100">
-                {/* Stripe Payment Section */}
-                <div className="p-6 space-y-6">
-                  <div className="flex items-center gap-3 mb-2">
-                    <div className="h-10 w-10 rounded-full bg-indigo-50 border border-indigo-100 flex items-center justify-center text-indigo-600">
-                      <ShieldCheck className="h-5 w-5" />
-                    </div>
-                    <div>
-                      <h3 className="font-bold text-slate-900">Payment Details</h3>
-                      <p className="text-xs text-slate-500">Processed via Stripe</p>
-                    </div>
-                  </div>
+                  <Dialog open={!!selectedOrder} onOpenChange={(open) => !open && setSelectedOrder(null)}>
 
-                  <div className="space-y-4">
-                    <div className="p-4 rounded-xl bg-slate-50 border border-slate-100 space-y-3">
-                      <div className="flex justify-between items-center">
-                        <span className="text-sm text-slate-500">Payment ID</span>
-                        <code className="text-xs font-mono bg-white px-2 py-1 rounded border border-slate-200 text-slate-700">
-                          {selectedOrder.stripePaymentId}
-                        </code>
-                      </div>
-                      <div className="flex justify-between items-center">
-                        <span className="text-sm text-slate-500">Amount</span>
-                        <span className="font-bold text-slate-900">S${selectedOrder.total.toFixed(2)}</span>
-                      </div>
-                      <div className="flex justify-between items-center">
-                        <span className="text-sm text-slate-500">Status</span>
-                          <Badge variant="outline" className={`
-                          ${selectedOrder.paymentStatus === 'succeeded' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 'bg-amber-50 text-amber-700 border-amber-200'}
-                        `}>
-                          {(selectedOrder.paymentStatus || '').toString().toUpperCase()}
-                        </Badge>
-                      </div>
-                    </div>
+                    <DialogContent className="max-w-4xl bg-white/95 backdrop-blur-xl border-white/40 shadow-2xl p-0 overflow-hidden gap-0">
 
-                    <Button variant="outline" className="w-full text-indigo-600 border-indigo-200 hover:bg-indigo-50 hover:text-indigo-700">
-                      View on Stripe Dashboard
-                      <ArrowUpRight className="ml-2 h-4 w-4" />
-                    </Button>
-                  </div>
-                </div>
+                      <DialogHeader className="p-6 pb-4 border-b border-slate-100/50 bg-slate-50/50">
 
-                {/* Lalamove Delivery Section */}
-                <div className="p-6 space-y-6 bg-slate-50/30">
-                  <div className="flex items-center gap-3 mb-2">
-                    <div className="h-10 w-10 rounded-full bg-orange-50 border border-orange-100 flex items-center justify-center text-orange-600">
-                      <ShoppingCart className="h-5 w-5" />
-                    </div>
-                    <div>
-                      <h3 className="font-bold text-slate-900">Delivery Tracking</h3>
-                      <p className="text-xs text-slate-500">Fulfilled by Lalamove</p>
-                    </div>
-                  </div>
+                        <div className="flex items-center justify-between">
 
-                  {selectedOrder.lalamove_driver ? (
-                    <div className="space-y-4">
-                      {/* Driver Card */}
-                      <div className="flex items-center gap-4 p-4 rounded-xl bg-white border border-slate-200 shadow-sm">
-                        <div className="h-12 w-12 rounded-full bg-slate-100 flex items-center justify-center">
-                          <Users className="h-6 w-6 text-slate-400" />
-                        </div>
-                        <div className="flex-1">
-                          <h4 className="font-bold text-slate-900">{selectedOrder.lalamove_driver?.name}</h4>
-                          <div className="flex items-center gap-2 text-xs text-slate-500">
-                            <span>{selectedOrder.lalamove_driver?.plate}</span>
-                            <span>•</span>
-                            <span>{selectedOrder.lalamove_driver?.phone}</span>
+                          <div className="flex flex-col gap-1">
+
+                            <DialogTitle className="text-xl font-bold flex items-center gap-2">
+
+                              Order {selectedOrder.orderNumber || `#${selectedOrder.id.slice(0, 8)}`}
+
+                              <Badge className={`
+
+                                ${statusToBadge[selectedOrder.lalamoveStatus || selectedOrder.status]?.variant === 'destructive' ? 'bg-rose-500 hover:bg-rose-600' : 'bg-indigo-600 hover:bg-indigo-700'}
+
+                              `}>
+
+                                {statusToBadge[selectedOrder.lalamoveStatus || selectedOrder.status]?.label || selectedOrder.status}
+
+                              </Badge>
+
+                            </DialogTitle>
+
+                            <DialogDescription className="flex items-center gap-2">
+
+                              <span>Placed on {selectedOrder.placed}</span>
+
+                              <span className="h-1 w-1 rounded-full bg-slate-300"></span>
+
+                              <span>Customer: <span className="font-semibold text-slate-700">{selectedOrder.customer}</span></span>
+
+                            </DialogDescription>
+
                           </div>
-                        </div>
-                        <a href={`tel:${selectedOrder.lalamove_driver?.phone || ''}`} className="p-2 rounded-full bg-emerald-50 text-emerald-600 hover:bg-emerald-100">
-                          <Users className="h-4 w-4" />
-                        </a>
-                      </div>
 
-                      {/* Status Timeline Placeholder */}
-                      <div className="relative pl-4 space-y-6 pt-2">
-                        <div className="absolute left-1.5 top-2 bottom-2 w-0.5 bg-slate-200"></div>
+                          <div className="flex gap-2">
 
-                        <div className="relative flex items-start gap-3">
-                          <div className="absolute -left-[5px] mt-1 h-3 w-3 rounded-full bg-emerald-500 ring-4 ring-white"></div>
-                          <div className="flex flex-col">
-                            <span className="text-sm font-semibold text-slate-900">{selectedOrder.lalamoveStatus}</span>
-                            <span className="text-xs text-slate-500">Current Status</span>
+                            <Button variant="outline" size="sm" className="gap-2 h-9" onClick={async () => {
+
+                              try {
+
+                                const ordersRes = await apiClient.request('/orders/admin/list');
+
+                                const rawOrders = Array.isArray(ordersRes) ? ordersRes : (ordersRes.orders || []);
+
+                                const ordersList = rawOrders.map((o: any) => ({
+
+                                  ...o,
+
+                                                            customer: (o.user?.name || o.user?.email || '').trim(),
+
+                                                            itemsCount: Array.isArray(o.items) ? o.items.length : 0,
+
+                                                            channel: (o.paymentMethod || '').toUpperCase(),
+
+                                  placed: o.createdAt ? new Date(o.createdAt).toLocaleDateString(undefined, { month: 'short', day: '2-digit' }) : '',
+
+                                  stripePaymentId: o.stripePaymentId,
+
+                                  paymentStatus: o.paymentStatus,
+
+                                  lalamoveStatus: o.lalamoveStatus,
+
+                                  lalamoveTrackingUrl: o.lalamoveTrackingUrl,
+
+                                }));
+
+                                setOrders(ordersList);
+
+                                const updated = ordersList.find((o: any) => o.id === selectedOrder?.id) || selectedOrder;
+
+                                setSelectedOrder(updated);
+
+                              } catch (e) {
+
+                                console.error('Failed to refresh admin data:', e);
+
+                              }
+
+                            }}>
+
+                              <RefreshCw className="h-4 w-4" /> Refresh
+
+                            </Button>
+
+                            {selectedOrder?.status === 'CONFIRMED' && !selectedOrder?.lalamoveOrderId && (
+
+                              <Button size="sm" className="bg-indigo-600 hover:bg-indigo-700 text-white h-9" onClick={() => markPackedAndDispatch(selectedOrder)} disabled={dispatching}>
+
+                                {dispatching ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Plus className="h-4 w-4 mr-2" />}
+
+                                Dispatch Order
+
+                              </Button>
+
+                            )}
+
                           </div>
+
                         </div>
 
-                        <div className="relative flex items-start gap-3 opacity-50">
-                          <div className="absolute -left-[5px] mt-1 h-3 w-3 rounded-full bg-slate-300 ring-4 ring-white"></div>
-                          <div className="flex flex-col">
-                            <span className="text-sm font-semibold text-slate-900">Order Placed</span>
-                            <span className="text-xs text-slate-500">{selectedOrder.placed}</span>
+                      </DialogHeader>
+
+        
+
+                      <div className="grid md:grid-cols-3 divide-x divide-slate-100 h-full max-h-[70vh] overflow-hidden">
+
+                        {/* Main Content: Items List */}
+
+                        <div className="md:col-span-2 overflow-y-auto p-6 space-y-6">
+
+                          <div>
+
+                            <h3 className="text-sm font-bold text-slate-400 uppercase tracking-wider mb-4">Order Items</h3>
+
+                            <div className="space-y-3">
+
+                              {Array.isArray(selectedOrder.items) ? (
+
+                                selectedOrder.items.map((item: any, idx: number) => (
+
+                                  <div key={idx} className="flex items-center justify-between p-3 rounded-xl border border-slate-100 bg-slate-50/50">
+
+                                    <div className="flex items-center gap-3">
+
+                                      <div className="h-10 w-10 rounded-lg bg-white border border-slate-200 flex items-center justify-center text-xs font-bold text-slate-400">
+
+                                        {idx + 1}
+
+                                      </div>
+
+                                      <div className="flex flex-col">
+
+                                        <span className="font-semibold text-slate-900">{item.productName || item.product?.name}</span>
+
+                                        <span className="text-xs text-slate-500">{item.brand} • {item.volume}</span>
+
+                                      </div>
+
+                                    </div>
+
+                                    <div className="text-right">
+
+                                      <span className="block font-bold text-slate-900">S${item.price.toFixed(2)}</span>
+
+                                      <span className="text-xs text-slate-500">Qty: {item.quantity}</span>
+
+                                    </div>
+
+                                  </div>
+
+                                ))
+
+                              ) : (
+
+                                 <div className="p-8 text-center text-slate-400 italic">No items found for this order.</div>
+
+                              )}
+
+                            </div>
+
                           </div>
+
+        
+
+                          <div className="pt-4 border-t border-slate-100">
+
+                            <div className="space-y-2">
+
+                              <div className="flex justify-between text-sm text-slate-500">
+
+                                <span>Subtotal</span>
+
+                                <span>S${(selectedOrder.subtotal || 0).toFixed(2)}</span>
+
+                              </div>
+
+                              <div className="flex justify-between text-sm text-slate-500">
+
+                                <span>Delivery Fee</span>
+
+                                <span>S${(selectedOrder.deliveryFee || 0).toFixed(2)}</span>
+
+                              </div>
+
+                              <div className="flex justify-between text-base font-bold text-slate-900 pt-2 border-t border-slate-100">
+
+                                <span>Total Amount</span>
+
+                                <span className="text-indigo-600">S${(selectedOrder.total || 0).toFixed(2)}</span>
+
+                              </div>
+
+                            </div>
+
+                          </div>
+
                         </div>
+
+        
+
+                        {/* Sidebar: Payment & Delivery */}
+
+                        <div className="bg-slate-50/30 overflow-y-auto">
+
+                          {/* Payment Info */}
+
+                          <div className="p-6 border-b border-slate-100">
+
+                            <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-4">Payment Information</h3>
+
+                            <div className="space-y-4">
+
+                              <div className="flex flex-col gap-1">
+
+                                <span className="text-xs text-slate-500">Method & Status</span>
+
+                                <div className="flex items-center justify-between">
+
+                                  <span className="font-semibold text-sm">{selectedOrder.paymentMethod}</span>
+
+                                  <Badge variant="outline" className={`
+
+                                    ${selectedOrder.paymentStatus === 'succeeded' || selectedOrder.paymentStatus === 'COMPLETED' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 'bg-amber-50 text-amber-700 border-amber-200'}
+
+                                  `}>
+
+                                    {(selectedOrder.paymentStatus || 'PENDING').toString().toUpperCase()}
+
+                                  </Badge>
+
+                                </div>
+
+                              </div>
+
+                              {selectedOrder.stripePaymentId && (
+
+                                <div className="flex flex-col gap-1">
+
+                                  <span className="text-xs text-slate-500">Stripe Reference</span>
+
+                                  <code className="text-[10px] font-mono bg-white px-2 py-1 rounded border border-slate-200 text-slate-600 truncate">
+
+                                    {selectedOrder.stripePaymentId}
+
+                                  </code>
+
+                                </div>
+
+                              )}
+
+                            </div>
+
+                          </div>
+
+        
+
+                          {/* Delivery Tracking */}
+
+                          <div className="p-6 space-y-6">
+
+                            <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider">Delivery Tracking</h3>
+
+                            
+
+                            {selectedOrder.lalamoveDriverName ? (
+
+                              <div className="space-y-4">
+
+                                {/* Driver Card */}
+
+                                <div className="flex items-center gap-3 p-3 rounded-xl bg-white border border-slate-200 shadow-sm">
+
+                                  <div className="h-10 w-10 rounded-full bg-slate-100 flex items-center justify-center">
+
+                                    <Users className="h-5 w-5 text-slate-400" />
+
+                                  </div>
+
+                                  <div className="flex-1 overflow-hidden">
+
+                                    <h4 className="font-bold text-sm text-slate-900 truncate">{selectedOrder.lalamoveDriverName}</h4>
+
+                                    <p className="text-[10px] text-slate-500 truncate">{selectedOrder.lalamoveDriverPlate}</p>
+
+                                  </div>
+
+                                  {selectedOrder.lalamoveDriverPhone && (
+
+                                    <a href={`tel:${selectedOrder.lalamoveDriverPhone}`} className="p-2 rounded-full bg-emerald-50 text-emerald-600 hover:bg-emerald-100">
+
+                                      <Users className="h-4 w-4" />
+
+                                    </a>
+
+                                  )}
+
+                                </div>
+
+        
+
+                                                                                {/* Status Timeline */}
+
+        
+
+                                                                                <div className="relative space-y-6 pt-2 pl-2">
+
+        
+
+                                                                                  {/* Vertical Line */}
+
+        
+
+                                                                                  <div className="absolute left-[8.5px] top-4 bottom-4 w-0.5 bg-slate-200"></div>
+
+        
+
+                                                        
+
+        
+
+                                                                                  {/* Step 1: Assigned */}
+
+        
+
+                                                                                  <div className="relative flex items-center gap-5">
+
+        
+
+                                                                                    <div className={`z-10 h-3 w-3 rounded-full ring-4 ring-white shadow-sm flex-shrink-0 ${
+
+        
+
+                                                                                      ['ASSIGNED', 'PICKED_UP', 'COMPLETED'].includes(selectedOrder.lalamoveStatus) ? 'bg-emerald-500' : 'bg-slate-300'
+
+        
+
+                                                                                    }`}></div>
+
+        
+
+                                                                                    <div className="flex flex-col min-w-0">
+
+        
+
+                                                                                      <span className={`text-[11px] font-bold uppercase tracking-wider ${
+
+        
+
+                                                                                        ['ASSIGNED', 'PICKED_UP', 'COMPLETED'].includes(selectedOrder.lalamoveStatus) ? 'text-slate-900' : 'text-slate-400'
+
+        
+
+                                                                                      }`}>Driver Assigned</span>
+
+        
+
+                                                                                    </div>
+
+        
+
+                                                                                  </div>
+
+        
+
+                                                        
+
+        
+
+                                                                                  {/* Step 2: Picked Up */}
+
+        
+
+                                                                                  <div className="relative flex items-center gap-5">
+
+        
+
+                                                                                    <div className={`z-10 h-3 w-3 rounded-full ring-4 ring-white shadow-sm flex-shrink-0 ${
+
+        
+
+                                                                                      ['PICKED_UP', 'COMPLETED'].includes(selectedOrder.lalamoveStatus) ? 'bg-emerald-500' : 'bg-slate-300'
+
+        
+
+                                                                                    }`}></div>
+
+        
+
+                                                                                    <div className="flex flex-col min-w-0">
+
+        
+
+                                                                                      <span className={`text-[11px] font-bold uppercase tracking-wider ${
+
+        
+
+                                                                                        ['PICKED_UP', 'COMPLETED'].includes(selectedOrder.lalamoveStatus) ? 'text-slate-900' : 'text-slate-400'
+
+        
+
+                                                                                      }`}>Order Picked Up</span>
+
+        
+
+                                                                                    </div>
+
+        
+
+                                                                                  </div>
+
+        
+
+                                                        
+
+        
+
+                                                                                  {/* Step 3: Completed */}
+
+        
+
+                                                                                  <div className="relative flex items-center gap-5">
+
+        
+
+                                                                                    <div className={`z-10 h-3 w-3 rounded-full ring-4 ring-white shadow-sm flex-shrink-0 ${
+
+        
+
+                                                                                      selectedOrder.lalamoveStatus === 'COMPLETED' ? 'bg-emerald-500' : 'bg-slate-300'
+
+        
+
+                                                                                    }`}></div>
+
+        
+
+                                                                                    <div className="flex flex-col min-w-0">
+
+        
+
+                                                                                      <span className={`text-[11px] font-bold uppercase tracking-wider ${
+
+        
+
+                                                                                        selectedOrder.lalamoveStatus === 'COMPLETED' ? 'text-slate-900' : 'text-slate-400'
+
+        
+
+                                                                                      }`}>Delivered</span>
+
+        
+
+                                                                                    </div>
+
+        
+
+                                                                                  </div>
+
+        
+
+                                                        
+
+        
+
+                                                                                  {/* Failure States */}
+
+        
+
+                                                                                  {['CANCELED', 'EXPIRED'].includes(selectedOrder.lalamoveStatus) && (
+
+        
+
+                                                                                    <div className="relative flex items-center gap-5">
+
+        
+
+                                                                                      <div className="z-10 h-3 w-3 rounded-full bg-rose-500 ring-4 ring-white shadow-sm flex-shrink-0"></div>
+
+        
+
+                                                                                      <div className="flex flex-col min-w-0">
+
+        
+
+                                                                                        <span className="text-[11px] font-bold uppercase tracking-wider text-rose-600">Delivery {selectedOrder.lalamoveStatus}</span>
+
+        
+
+                                                                                      </div>
+
+        
+
+                                                                                    </div>
+
+        
+
+                                                                                  )}
+
+        
+
+                                                                                </div>
+
+        
+
+                                {selectedOrder.lalamoveTrackingUrl && (
+
+                                  <Button size="sm" className="w-full bg-[#ff6b00] hover:bg-[#e66000] text-white shadow-lg shadow-orange-500/10 text-xs h-9" onClick={() => {
+
+                                    try { window.open(selectedOrder.lalamoveTrackingUrl, '_blank'); } catch (_) {}
+
+                                  }}>
+
+                                    Track Live
+
+                                    <ArrowUpRight className="ml-1.5 h-3 w-3" />
+
+                                  </Button>
+
+                                )}
+
+                              </div>
+
+                            ) : (
+
+                              <div className="flex flex-col items-center justify-center py-8 text-center p-4 border-2 border-dashed border-slate-200 rounded-xl bg-slate-50/50">
+
+                                <div className="h-10 w-10 rounded-full bg-slate-100 flex items-center justify-center mb-2">
+
+                                  <Loader2 className="h-5 w-5 text-slate-400 animate-spin" />
+
+                                </div>
+
+                                <h4 className="text-xs font-semibold text-slate-900">Awaiting Assignment</h4>
+
+                                <p className="text-[10px] text-slate-500 max-w-[140px]">Searching for a nearby driver...</p>
+
+                              </div>
+
+                            )}
+
+                          </div>
+
+                        </div>
+
                       </div>
 
-                      {selectedOrder.lalamoveTrackingUrl && (
-                        <Button className="w-full bg-[#ff6b00] hover:bg-[#e66000] text-white shadow-lg shadow-orange-500/20" onClick={() => {
-                          try { window.open(selectedOrder.lalamoveTrackingUrl, '_blank'); } catch (_) {}
-                        }}>
-                          Track Delivery Live
-                          <ArrowUpRight className="ml-2 h-4 w-4" />
-                        </Button>
-                      )}
-                    </div>
-                  ) : (
-                    <div className="flex flex-col items-center justify-center h-48 text-center p-4 border-2 border-dashed border-slate-200 rounded-xl bg-slate-50/50">
-                      <div className="h-12 w-12 rounded-full bg-slate-100 flex items-center justify-center mb-3">
-                        <Loader2 className="h-6 w-6 text-slate-400 animate-spin" />
-                      </div>
-                      <h4 className="font-semibold text-slate-900">Awaiting Assignment</h4>
-                      <p className="text-sm text-slate-500 max-w-[200px]">Logicstics provider is currently searching for a nearby driver.</p>
-                    </div>
-                  )}
-                </div>
-              </div>
-            </DialogContent>
-          </Dialog>
-        )}
+                    </DialogContent>
+
+                  </Dialog>
+
+                )}
         {/* Location Picker Dialog */}
         <Dialog open={isLocationDialogOpen} onOpenChange={setIsLocationDialogOpen}>
           <DialogContent className="sm:max-w-[600px] bg-white/95 backdrop-blur-xl border-white/40 p-0 overflow-hidden shadow-2xl gap-0">
@@ -1231,6 +1708,81 @@ export default function AdminPanel() {
             </div>
           </DialogContent>
         </Dialog>
+
+        {selectedUser && (
+          <Dialog open={!!selectedUser} onOpenChange={(open) => !open && setSelectedUser(null)}>
+            <DialogContent className="max-w-2xl bg-white/95 backdrop-blur-xl border-white/40 shadow-2xl p-0 overflow-hidden gap-0">
+              <DialogHeader className="p-6 pb-4 border-b border-slate-100/50 bg-slate-50/50">
+                <div className="flex items-center gap-4">
+                  <div className="h-12 w-12 rounded-full bg-indigo-600 flex items-center justify-center text-white font-bold text-xl shadow-lg">
+                    {(selectedUser.name || selectedUser.email).charAt(0).toUpperCase()}
+                  </div>
+                  <div className="flex flex-col">
+                    <DialogTitle className="text-xl font-bold">{selectedUser.name || 'User'}</DialogTitle>
+                    <DialogDescription>{selectedUser.email}</DialogDescription>
+                  </div>
+                </div>
+              </DialogHeader>
+              
+              <div className="p-6 space-y-6">
+                <div className="grid grid-cols-3 gap-4">
+                  <div className="bg-slate-50 p-4 rounded-xl border border-slate-100">
+                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block mb-1">Total Spend</span>
+                    <span className="text-lg font-bold text-slate-900">S${(selectedUser.spend || 0).toLocaleString()}</span>
+                  </div>
+                  <div className="bg-slate-50 p-4 rounded-xl border border-slate-100">
+                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block mb-1">Orders</span>
+                    <span className="text-lg font-bold text-slate-900">{selectedUser.ordersCount || 0}</span>
+                  </div>
+                  <div className="bg-slate-50 p-4 rounded-xl border border-slate-100">
+                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block mb-1">Tier</span>
+                    <span className="text-lg font-bold text-indigo-600">{selectedUser.tier || 'Bronze'}</span>
+                  </div>
+                </div>
+
+                <div>
+                  <h3 className="text-sm font-bold text-slate-900 mb-4">Order History</h3>
+                  <div className="max-h-[300px] overflow-y-auto pr-2 space-y-2">
+                    {selectedUser.orders && selectedUser.orders.length > 0 ? (
+                      selectedUser.orders.map((o: any) => (
+                        <div key={o.id} className="p-4 rounded-xl border border-slate-100 bg-white hover:border-indigo-100 transition-all space-y-3">
+                          <div className="flex items-center justify-between">
+                            <div className="flex flex-col">
+                              <span className="text-sm font-semibold text-slate-900">Order #{o.id.slice(0, 8).toUpperCase()}</span>
+                              <span className="text-[10px] text-slate-500">{new Date(o.createdAt).toLocaleDateString()}</span>
+                            </div>
+                            <div className="flex items-center gap-4">
+                              <Badge variant="outline" className="text-[10px] py-0 px-2 h-5">
+                                {o.status}
+                              </Badge>
+                              <span className="font-bold text-slate-900">S${(o.total || 0).toFixed(2)}</span>
+                            </div>
+                          </div>
+                          
+                          {/* Order Items Summary */}
+                          <div className="pt-2 border-t border-slate-50">
+                            <ul className="space-y-1">
+                              {o.items?.map((item: any, i: number) => (
+                                <li key={i} className="flex justify-between text-[11px] text-slate-600">
+                                  <span>{item.productName} <span className="text-slate-400">x{item.quantity}</span></span>
+                                  <span className="font-medium text-slate-500">S${(item.price * item.quantity).toFixed(2)}</span>
+                                </li>
+                              ))}
+                            </ul>
+                          </div>
+                        </div>
+                      ))
+                    ) : (
+                      <div className="text-center py-8 text-slate-400 text-sm">
+                        No orders found for this user.
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+            </DialogContent>
+          </Dialog>
+        )}
       </div>
     </div>
   );

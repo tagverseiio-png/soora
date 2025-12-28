@@ -1,9 +1,11 @@
 import { Router, Request, Response } from 'express';
 import { prisma } from '../utils/prisma';
 import bcrypt from 'bcryptjs';
+import crypto from 'crypto';
 import jwt, { SignOptions, Secret } from 'jsonwebtoken';
 import { validators } from '../middleware/validators';
 import { validationResult } from 'express-validator';
+import { sendPasswordResetEmail } from '../utils/email';
 
 const router = Router();
 
@@ -88,28 +90,21 @@ router.post('/login', validators.login, async (req: Request, res: Response) => {
     }
 
     const { email, password } = req.body;
-    console.log('Login attempt:', { email, passwordLength: password?.length });
 
     // Find user
     const user = await prisma.user.findUnique({ where: { email } });
-    console.log('User found:', !!user, user?.email);
     if (!user) {
-      console.log('User not found for email:', email);
       return res.status(401).json({ error: 'Invalid credentials' });
     }
 
     // Check if active
     if (!user.isActive) {
-      console.log('User is inactive');
       return res.status(403).json({ error: 'Account is deactivated' });
     }
 
     // Verify password
-    console.log('Verifying password...');
     const isValidPassword = await bcrypt.compare(password, user.password);
-    console.log('Password valid:', isValidPassword);
     if (!isValidPassword) {
-      console.log('Invalid password for user:', email);
       return res.status(401).json({ error: 'Invalid credentials' });
     }
 
@@ -125,7 +120,6 @@ router.post('/login', validators.login, async (req: Request, res: Response) => {
 
     res.json({ user: userWithoutPassword, token });
   } catch (error: any) {
-    console.error('Login error:', error);
     res.status(500).json({ error: error.message });
   }
 });
@@ -168,6 +162,97 @@ router.get('/me', async (req: Request, res: Response) => {
 // Logout
 router.post('/logout', async (_req: Request, res: Response) => {
   res.json({ message: 'Logged out successfully' });
+});
+
+// Forgot Password
+router.post('/forgot-password', validators.forgotPassword, async (req: Request, res: Response) => {
+  try {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json({ errors: errors.array() });
+    }
+
+    const { email } = req.body;
+    const user = await prisma.user.findUnique({ where: { email } });
+
+    if (!user) {
+      // Return 200 even if user not found for security
+      return res.status(200).json({ message: 'If an account with that email exists, we have sent a reset link.' });
+    }
+
+    // Generate token
+    const resetToken = crypto.randomBytes(32).toString('hex');
+    const hashedToken = crypto.createHash('sha256').update(resetToken).digest('hex');
+    
+    // Set expiry (1 hour)
+    const expiry = new Date(Date.now() + 3600000);
+
+    // Save to DB
+    await prisma.user.update({
+      where: { id: user.id },
+      data: {
+        resetToken: hashedToken,
+        resetTokenExpiry: expiry,
+      },
+    });
+
+    // Send email
+    const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3000';
+    const resetUrl = `${frontendUrl}/reset-password?token=${resetToken}`;
+
+    await sendPasswordResetEmail(user.email, resetUrl);
+
+    res.json({ message: 'If an account with that email exists, we have sent a reset link.' });
+  } catch (error: any) {
+    console.error('Forgot password error:', error);
+    res.status(500).json({ error: 'Server error occurred' });
+  }
+});
+
+// Reset Password
+router.post('/reset-password', validators.resetPassword, async (req: Request, res: Response) => {
+  try {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json({ errors: errors.array() });
+    }
+
+    const { token, password } = req.body;
+
+    // Hash the token provided in the URL to compare with DB
+    const hashedToken = crypto.createHash('sha256').update(token).digest('hex');
+
+    const user = await prisma.user.findFirst({
+      where: {
+        resetToken: hashedToken,
+        resetTokenExpiry: {
+          gt: new Date(),
+        },
+      },
+    });
+
+    if (!user) {
+      return res.status(400).json({ error: 'Invalid or expired reset token' });
+    }
+
+    // Hash new password
+    const hashedPassword = await bcrypt.hash(password, 10);
+
+    // Update user and clear token
+    await prisma.user.update({
+      where: { id: user.id },
+      data: {
+        password: hashedPassword,
+        resetToken: null,
+        resetTokenExpiry: null,
+      },
+    });
+
+    res.json({ message: 'Password has been reset successfully. You can now log in.' });
+  } catch (error: any) {
+    console.error('Reset password error:', error);
+    res.status(500).json({ error: 'Server error occurred' });
+  }
 });
 
 export default router;

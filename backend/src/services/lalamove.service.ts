@@ -78,7 +78,7 @@ export class LalamoveService {
   /**
    * Generate signature for Lalamove API authentication
    */
-  private generateSignature(
+  public generateSignature(
     timestamp: string,
     method: string,
     path: string,

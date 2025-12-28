@@ -149,11 +149,6 @@ router.post(
         // Keep default deliveryFee
     }
 
-    // Apply Free Delivery Threshold (Business Rule)
-    if (subtotal >= Number(process.env.FREE_DELIVERY_THRESHOLD ?? 100)) {
-      deliveryFee = 0;
-    }
-
     const total = subtotal + deliveryFee;
 
     // Get user details

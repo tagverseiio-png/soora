@@ -83,14 +83,6 @@ router.post('/quote', authenticate, async (req: AuthRequest, res) => {
        deliveryFee = parseFloat(quoteData.priceBreakdown.total);
     }
 
-    // Apply Free Delivery Logic if subtotal is provided
-    if (subtotal !== undefined) {
-       const threshold = Number(process.env.FREE_DELIVERY_THRESHOLD ?? 100);
-       if (Number(subtotal) >= threshold) {
-         deliveryFee = 0;
-       }
-    }
-
     const estimatedTime = (quotation as any)?.estimatedTimeTaken || null;
 
     res.json({
@@ -105,7 +97,8 @@ router.post('/quote', authenticate, async (req: AuthRequest, res) => {
   } catch (error: any) {
     console.error('Delivery quote error:', error.message);
     // Fallback to default delivery fee on error
-    const fallbackFee = parseFloat(process.env.DELIVERY_FEE || '5');
+    let fallbackFee = parseFloat(process.env.DELIVERY_FEE || '5');
+
     res.json({
       quotation: null,
       deliveryFee: fallbackFee,

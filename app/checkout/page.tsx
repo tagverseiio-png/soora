@@ -66,7 +66,7 @@ export default function CheckoutPage() {
             setQuoteLoading(true);
             setQuoteError(null);
             try {
-                // Calculate current subtotal to send to backend for free delivery logic
+                // Calculate current subtotal
                 const currentSubtotal = cart.reduce((acc, item) => acc + (item.price * (item.quantity || 1)), 0);
                 
                 const quote = await apiClient.request<any>('/delivery/quote', {

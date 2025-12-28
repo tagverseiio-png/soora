@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { ShoppingBag, Search, User, Home, Clock, ChevronDown, ArrowRight, Package, LogOut, MapPin } from 'lucide-react';
+import { ShoppingBag, Search, User, Home, Clock, ChevronDown, ArrowRight, Package, LogOut, MapPin, Plus } from 'lucide-react';
 import ProductCard from '@/components/ProductCard';
 import Overlay from '@/components/Overlay';
 import SlideToPay from '@/components/SlideToPay';
@@ -49,6 +49,35 @@ export default function ShopPage() {
     const [trackingData, setTrackingData] = useState<Record<string, any>>({});
     const [trackingErrors, setTrackingErrors] = useState<Record<string, string>>({});
     const [slideKey, setSlideKey] = useState(0);
+    const [deliveryFee, setDeliveryFee] = useState<number | null>(null);
+    const [isCalculatingDelivery, setIsCalculatingDelivery] = useState(false);
+
+    useEffect(() => {
+        const fetchDeliveryFee = async () => {
+            if (!isCartOpen || !selectedAddress) {
+                setDeliveryFee(null);
+                return;
+            }
+            setIsCalculatingDelivery(true);
+            try {
+                const currentSubtotal = cart.reduce((acc, item) => acc + item.price, 0);
+                const res: any = await apiClient.request('/delivery/quote', {
+                    method: 'POST',
+                    body: JSON.stringify({
+                        addressId: selectedAddress.id,
+                        subtotal: currentSubtotal
+                    })
+                });
+                setDeliveryFee(res.deliveryFee);
+            } catch (error) {
+                console.error('Failed to fetch delivery quote:', error);
+                setDeliveryFee(null);
+            } finally {
+                setIsCalculatingDelivery(false);
+            }
+        };
+        fetchDeliveryFee();
+    }, [isCartOpen, selectedAddress, cart]);
 
     // Fetch products from backend with dev guard to avoid duplicate fetches
     const didFetchProducts = useRef(false);
@@ -227,7 +256,7 @@ export default function ShopPage() {
     const featuredProducts = products.filter(p => p.isFeatured === true);
     const displayedProducts = activeCategory === 'All'
         ? products
-        : products.filter(p => p.category === activeCategory);
+        : products.filter(p => (p.category || '').toUpperCase() === activeCategory.toUpperCase());
 
     const displayName = user?.name || user?.email || 'User';
     const userInitial = displayName.charAt(0).toUpperCase();
@@ -413,7 +442,7 @@ export default function ShopPage() {
                     <div className="h-full flex flex-col items-center justify-center text-center">
                         <ShoppingBag className="w-12 h-12 text-gray-300 mb-4" />
                         <h3 className="text-[17px] font-semibold text-[#1d1d1f] mb-1">Your bag is empty.</h3>
-                        <p className="text-[14px] text-gray-500 mb-6 max-w-xs">Free delivery on all orders over S$200. Start adding your favorites.</p>
+                        <p className="text-[14px] text-gray-500 mb-6 max-w-xs">Chilled and delivered to your doorstep in under 60 minutes across Singapore.</p>
                         <button onClick={() => setIsCartOpen(false)} className="text-[#0071e3] text-[14px] font-medium hover:underline">Continue Shopping</button>
                     </div>
                 ) : (
@@ -445,17 +474,48 @@ export default function ShopPage() {
                         </div>
 
                         <div className="mt-8 pt-6 border-t border-gray-100">
+                            <div className="mb-6 p-4 rounded-xl bg-[#f5f5f7] border border-gray-200">
+                                <div className="flex justify-between items-start mb-2">
+                                    <span className="text-[11px] font-bold text-gray-400 uppercase tracking-[0.1em]">Delivery Address</span>
+                                    <button onClick={() => setIsLocationOpen(true)} className="text-[11px] font-bold text-[#0071e3] hover:underline uppercase tracking-[0.1em]">Change</button>
+                                </div>
+                                {selectedAddress ? (
+                                    <div className="flex items-start gap-3">
+                                        <div className="w-8 h-8 rounded-full bg-white flex items-center justify-center flex-shrink-0 shadow-sm border border-black/5">
+                                            <MapPin className="w-4 h-4 text-[#1d1d1f]" />
+                                        </div>
+                                        <div className="flex-1 min-w-0">
+                                            <p className="text-[14px] font-semibold text-[#1d1d1f] truncate">{selectedAddress.name}</p>
+                                            <p className="text-[13px] text-gray-500 truncate">{selectedAddress.street} {selectedAddress.unit && `#${selectedAddress.unit}`}</p>
+                                            <p className="text-[12px] text-gray-400">{selectedAddress.postalCode}, {selectedAddress.district}</p>
+                                        </div>
+                                    </div>
+                                ) : (
+                                    <div className="flex flex-col items-center py-2 text-center">
+                                        <p className="text-[13px] text-gray-500 mb-2">No address selected for delivery</p>
+                                        <button onClick={() => setIsLocationOpen(true)} className="text-[13px] font-semibold text-[#1d1d1f] flex items-center gap-1.5">
+                                            <Plus className="w-3.5 h-3.5" /> Select Address
+                                        </button>
+                                    </div>
+                                )}
+                            </div>
                             <div className="flex justify-between mb-2">
                                 <span className="text-[14px] text-gray-500">Subtotal</span>
                                 <span className="text-[14px] font-medium text-[#1d1d1f]">S${cartTotal.toLocaleString()}</span>
                             </div>
                             <div className="flex justify-between mb-8">
                                 <span className="text-[14px] text-gray-500">Shipping</span>
-                                <span className="text-[14px] font-medium text-[#1d1d1f]">Free</span>
+                                {isCalculatingDelivery ? (
+                                    <span className="text-[14px] text-gray-400 animate-pulse">Calculating...</span>
+                                ) : (
+                                    <span className="text-[14px] font-medium text-[#1d1d1f]">
+                                        {deliveryFee !== null ? `S$${deliveryFee.toFixed(2)}` : (selectedAddress ? 'Calculated at checkout' : 'Select address')}
+                                    </span>
+                                )}
                             </div>
                             <SlideToPay 
                                 key={slideKey}
-                                total={cartTotal} 
+                                total={cartTotal + (deliveryFee || 0)} 
                                 onComplete={() => { 
                                     if (!user) {
                                         alert('Please sign in to continue.');
@@ -910,7 +970,7 @@ export default function ShopPage() {
             </Overlay>
 
             {/* Profile Completion Modal */}
-            <Overlay isOpen={isProfileModalOpen} onClose={() => {}} title="Complete Your Profile">
+            <Overlay isOpen={isProfileModalOpen} onClose={() => setIsProfileModalOpen(false)} title="Complete Your Profile">
                 <div className="space-y-4">
                     <div>
                         <label className="text-[13px] font-semibold text-[#1d1d1f] block mb-2">Full Name</label>

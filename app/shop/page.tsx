@@ -366,26 +366,6 @@ export default function ShopPage() {
                                 ))}
                             </div>
                         </div>
-
-                        <div className="mb-20 md:mb-32">
-                            <div className="flex justify-between items-baseline mb-8">
-                                <h3 className="text-3xl font-serif font-medium text-[#1d1d1f] tracking-tight">Curator&apos;s Choice</h3>
-                                <button className="text-gray-500 text-xs font-bold uppercase tracking-widest hover:text-black transition-colors">View Editorial</button>
-                            </div>
-                            <div className="flex gap-6 md:gap-8 overflow-x-auto no-scrollbar pb-12 -mx-4 px-4 md:-mx-6 md:px-6">
-                                {featuredProducts.map(product => (
-                                    <div key={product.id} className="min-w-[280px] md:min-w-[340px]">
-                                        <ProductCard
-                                            product={product}
-                                            count={getItemCount(product.id)}
-                                            onAdd={addToCart}
-                                            onRemove={removeFromCart}
-                                        />
-                                    </div>
-                                ))}
-                            </div>
-                        </div>
-
                         <div>
                             <h3 className="text-3xl font-serif font-medium text-[#1d1d1f] mb-8 tracking-tight">The Collection</h3>
                             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8 md:gap-12">

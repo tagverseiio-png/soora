@@ -45,11 +45,6 @@ export default function SignupPage() {
     <div className="min-h-screen bg-[#FAFAFA] flex">
       <div className="hidden lg:flex lg:w-1/2 relative overflow-hidden bg-[#1a1a1a]">
         <div className="absolute inset-0">
-          <img
-            src="https://images.unsplash.com/photo-1597402449572-1329a2884c7c?auto=format&fit=crop&q=80&w=2000"
-            alt="Luxury spirits"
-            className="w-full h-full object-cover opacity-40"
-          />
         </div>
         <div className="relative z-10 flex flex-col justify-between p-16 text-white">
           <Link href="/" className="text-4xl font-serif font-medium tracking-tighter">

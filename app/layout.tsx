@@ -3,26 +3,94 @@ import type { Metadata } from 'next';
 import { Inter } from 'next/font/google';
 import { AuthProvider } from '@/lib/AuthContext';
 
-const inter = Inter({ subsets: ['latin'] });
+const inter = Inter({
+  subsets: ['latin'],
+  display: 'swap',
+  variable: '--font-inter',
+});
 
 export const metadata: Metadata = {
-  title: 'Soora - Singapore\'s Premier Spirits Boutique',
-  description: 'Curated fine wines, whiskies, and artisanal spirits delivered in 60 minutes across Singapore.',
+  metadataBase: new URL('https://www.sooraaexpress.com'),
+
+  title: {
+    default: "Soora Express — Singapore's Premier Spirits Boutique",
+    template: "%s | Soora Express",
+  },
+
+  description:
+    "Soora Express is Singapore's premium spirits boutique delivering curated fine wines, rare whiskies, champagnes, and artisanal spirits in 60 minutes across Singapore.",
+
+  applicationName: "Soora Express",
+
+  keywords: [
+    "Soora Express",
+    "Singapore alcohol delivery",
+    "premium spirits Singapore",
+    "whisky delivery Singapore",
+    "wine delivery Singapore",
+    "champagne Singapore",
+    "artisanal spirits",
+    "same day alcohol delivery",
+    "luxury liquor Singapore",
+  ],
+
+  authors: [{ name: "Soora Express" }],
+  creator: "Soora Express",
+  publisher: "Soora Express",
+
+  alternates: {
+    canonical: '/',
+  },
+
+  robots: {
+    index: true,
+    follow: true,
+    googleBot: {
+      index: true,
+      follow: true,
+      "max-image-preview": "large",
+      "max-snippet": -1,
+      "max-video-preview": -1,
+    },
+  },
+
+  icons: {
+    icon: [
+      { url: "/favion.ico", type: "image/x-icon" },
+    ],
+    shortcut: "/favion.ico",
+    apple: "/favion.ico",
+  },
+
   openGraph: {
+    type: "website",
+    locale: "en_SG",
+    url: "https://www.sooraaexpress.com",
+    siteName: "Soora Express",
+    title: "Soora Express — Singapore's Premier Spirits Boutique",
+    description:
+      "Curated fine wines, rare whiskies, champagnes, and artisanal spirits delivered in 60 minutes across Singapore.",
     images: [
       {
-        url: 'https://bolt.new/static/og_default.png',
+        url: "/favion.ico",
+        width: 512,
+        height: 512,
+        alt: "Soora Express Logo",
       },
     ],
   },
+
   twitter: {
-    card: 'summary_large_image',
-    images: [
-      {
-        url: 'https://bolt.new/static/og_default.png',
-      },
-    ],
+    card: "summary_large_image",
+    site: "@sooraaexpress",
+    creator: "@sooraaexpress",
+    title: "Soora Express — Singapore's Premier Spirits Boutique",
+    description:
+      "Premium spirits delivered in 60 minutes across Singapore.",
+    images: ["/favion.ico"],
   },
+
+  category: "ecommerce",
 };
 
 export default function RootLayout({
@@ -31,7 +99,15 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="en" className={inter.className} suppressHydrationWarning>
+    <html
+      lang="en"
+      className={inter.className}
+      suppressHydrationWarning
+    >
+      <head>
+        <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1" />
+        <meta name="theme-color" content="#000000" />
+      </head>
       <body>
         <AuthProvider>{children}</AuthProvider>
       </body>

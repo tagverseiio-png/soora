@@ -1,5 +1,5 @@
 import './globals.css';
-import type { Metadata, Viewport } from 'next';
+import type { Metadata } from 'next';
 import { Inter } from 'next/font/google';
 import { AuthProvider } from '@/lib/AuthContext';
 
@@ -13,12 +13,12 @@ export const metadata: Metadata = {
   metadataBase: new URL('https://www.sooraaexpress.com'),
 
   title: {
-    default: "Soora Express — Singapore’s Premier Spirits Boutique",
+    default: "Soora Express — Singapore's Premier Spirits Boutique",
     template: "%s | Soora Express",
   },
 
   description:
-    "Soora Express is Singapore’s premium spirits boutique delivering curated fine wines, rare whiskies, champagnes, and artisanal spirits in 60 minutes across Singapore.",
+    "Soora Express is Singapore's premium spirits boutique delivering curated fine wines, rare whiskies, champagnes, and artisanal spirits in 60 minutes across Singapore.",
 
   applicationName: "Soora Express",
 
@@ -67,7 +67,7 @@ export const metadata: Metadata = {
     locale: "en_SG",
     url: "https://www.sooraaexpress.com",
     siteName: "Soora Express",
-    title: "Soora Express — Singapore’s Premier Spirits Boutique",
+    title: "Soora Express — Singapore's Premier Spirits Boutique",
     description:
       "Curated fine wines, rare whiskies, champagnes, and artisanal spirits delivered in 60 minutes across Singapore.",
     images: [
@@ -84,20 +84,13 @@ export const metadata: Metadata = {
     card: "summary_large_image",
     site: "@sooraaexpress",
     creator: "@sooraaexpress",
-    title: "Soora Express — Singapore’s Premier Spirits Boutique",
+    title: "Soora Express — Singapore's Premier Spirits Boutique",
     description:
       "Premium spirits delivered in 60 minutes across Singapore.",
     images: ["/favion.ico"],
   },
 
   category: "ecommerce",
-};
-
-export const viewport: Viewport = {
-  width: "device-width",
-  initialScale: 1,
-  maximumScale: 1,
-  themeColor: "#000000",
 };
 
 export default function RootLayout({
@@ -111,6 +104,10 @@ export default function RootLayout({
       className={inter.className}
       suppressHydrationWarning
     >
+      <head>
+        <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1" />
+        <meta name="theme-color" content="#000000" />
+      </head>
       <body>
         <AuthProvider>{children}</AuthProvider>
       </body>

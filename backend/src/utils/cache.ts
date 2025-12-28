@@ -14,6 +14,10 @@ class CacheService {
           enableReadyCheck: false,
         });
 
+        this.redis.on('connect', () => {
+          console.log('Connected to Redis cache');
+        });
+
         this.redis.on('error', () => {
           this.redis = null; // fallback to memory
         });

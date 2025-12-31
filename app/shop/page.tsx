@@ -79,6 +79,12 @@ export default function ShopPage() {
         fetchDeliveryFee();
     }, [isCartOpen, selectedAddress, cart]);
 
+    const collectionRef = useRef<HTMLDivElement>(null);
+
+    const scrollToCollection = () => {
+        collectionRef.current?.scrollIntoView({ behavior: 'smooth' });
+    };
+
     // Fetch products from backend with dev guard to avoid duplicate fetches
     const didFetchProducts = useRef(false);
     const productsInFlight = useRef<Promise<void> | null>(null);
@@ -345,11 +351,11 @@ export default function ShopPage() {
                             <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent p-8 md:p-16 flex flex-col justify-end text-white">
                                 <p className="text-xs font-bold uppercase tracking-[0.3em] mb-4 text-white/80">Holiday 2025</p>
                                 <h2 className="text-5xl md:text-8xl font-serif leading-[0.9] mb-8 tracking-tight">The Art of <br /><span className="italic font-light opacity-80">Celebration.</span></h2>
-                                <button className="bg-white text-black px-8 py-3.5 rounded-full self-start font-bold uppercase tracking-widest text-xs hover:bg-gray-200 transition-colors">Shop Collection</button>
+                                <button onClick={scrollToCollection} className="bg-white text-black px-8 py-3.5 rounded-full self-start font-bold uppercase tracking-widest text-xs hover:bg-gray-200 transition-colors">Shop Collection</button>
                             </div>
                         </div>
 
-                        <div className="mb-20 md:mb-32">
+                        <div className="mb-20 md:mb-32" ref={collectionRef}>
                             <h3 className="text-3xl font-serif font-medium text-[#1d1d1f] mb-8 tracking-tight">Shop by Category</h3>
                             <div className="flex gap-6 overflow-x-auto no-scrollbar pb-8">
                                 {CATEGORIES.slice(1).map((cat) => (

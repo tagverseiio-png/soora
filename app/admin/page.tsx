@@ -22,6 +22,7 @@ import {
   History,
   UserCheck,
   Users,
+  Menu,
 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -54,6 +55,11 @@ import {
   DialogFooter,
   DialogDescription,
 } from "@/components/ui/dialog";
+import {
+  Sheet,
+  SheetContent,
+  SheetTrigger,
+} from "@/components/ui/sheet";
 import { Label } from "@/components/ui/label";
 import { Plus, Pencil, Trash2 } from "lucide-react";
 
@@ -108,6 +114,7 @@ export default function AdminPanel() {
   const [users, setUsers] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
   const [formData, setFormData] = useState<Partial<Product>>({});
   const [dispatching, setDispatching] = useState(false);
@@ -464,13 +471,69 @@ export default function AdminPanel() {
         <main className="flex-1 space-y-8 min-w-0">
           <header className="rounded-2xl border border-white/60 bg-white/60 backdrop-blur-md px-8 py-6 shadow-sm">
             <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-              <div className="space-y-1.5">
-                <div className="flex items-center gap-2">
-                  <span className="inline-block h-1.5 w-1.5 rounded-full bg-indigo-500"></span>
-                  <p className="text-xs font-bold uppercase tracking-wider text-indigo-600">Control Center</p>
+              <div className="flex items-start gap-4">
+                <Sheet open={isMobileMenuOpen} onOpenChange={setIsMobileMenuOpen}>
+                  <SheetTrigger asChild>
+                    <Button variant="outline" size="icon" className="md:hidden shrink-0 h-10 w-10 border-slate-200">
+                      <Menu className="h-5 w-5 text-slate-600" />
+                    </Button>
+                  </SheetTrigger>
+                  <SheetContent side="left" className="w-72 p-5 bg-white/95 backdrop-blur-xl border-r border-white/40">
+                    <div className="flex items-center gap-3 mb-8 px-2">
+                      <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-indigo-600 text-white shadow-lg shadow-indigo-600/20">
+                        <ShieldCheck className="h-5 w-5" />
+                      </div>
+                      <div className="text-base font-bold tracking-tight text-slate-800">Soora Admin</div>
+                    </div>
+                    <nav className="flex flex-col gap-1.5 text-sm font-medium text-slate-600">
+                      {moduleLinks.map((item) => {
+                        const Icon = item.icon;
+                        const isActive = activeView === item.name;
+                        return (
+                          <button
+                            key={item.name}
+                            onClick={() => {
+                              setActiveView(item.name);
+                              setIsMobileMenuOpen(false);
+                            }}
+                            className={`group flex items-center justify-between rounded-xl px-3 py-2.5 text-left transition-all active:scale-95 ${
+                              isActive
+                                ? "bg-indigo-600 text-white shadow-md shadow-indigo-600/20"
+                                : "hover:bg-indigo-50 hover:text-indigo-700"
+                            }`}
+                          >
+                            <span className="flex items-center gap-3">
+                              <Icon
+                                className={`h-4.5 w-4.5 transition-colors ${
+                                  isActive ? "text-white" : "group-hover:text-indigo-600"
+                                }`}
+                              />
+                              {item.name}
+                            </span>
+                            {isActive && (
+                              <div className="h-1.5 w-1.5 rounded-full bg-white animate-pulse" />
+                            )}
+                          </button>
+                        );
+                      })}
+                    </nav>
+                    <div className="mt-auto absolute bottom-5 left-5 right-5">
+                       <Button variant="outline" className="w-full gap-2 border-slate-200 hover:bg-slate-50 hover:text-slate-900 transition-colors" asChild>
+                        <Link href="/">
+                          <ArrowLeft className="h-4 w-4" /> Back to Store
+                        </Link>
+                      </Button>
+                    </div>
+                  </SheetContent>
+                </Sheet>
+                <div className="space-y-1.5">
+                  <div className="flex items-center gap-2">
+                    <span className="inline-block h-1.5 w-1.5 rounded-full bg-indigo-500"></span>
+                    <p className="text-xs font-bold uppercase tracking-wider text-indigo-600">Control Center</p>
+                  </div>
+                  <h1 className="text-3xl font-bold tracking-tight text-slate-900">{activeView}</h1>
+                  <p className="text-sm text-slate-500 font-medium">Manage your store operations.</p>
                 </div>
-                <h1 className="text-3xl font-bold tracking-tight text-slate-900">{activeView}</h1>
-                <p className="text-sm text-slate-500 font-medium">Manage your store operations.</p>
               </div>
               <div className="flex flex-wrap gap-3">
                 <Button variant="outline" className="gap-2 border-slate-200 bg-white/50 hover:bg-white hover:border-indigo-200 hover:text-indigo-600 transition-all shadow-sm" onClick={async () => { 
@@ -552,7 +615,7 @@ export default function AdminPanel() {
                       <CardDescription>Recent items and stock status.</CardDescription>
                     </div>
                   </CardHeader>
-                  <CardContent className="p-0">
+                  <CardContent className="p-0 overflow-x-auto">
                     <Table>
                       <TableHeader className="bg-slate-50/50">
                         <TableRow className="hover:bg-transparent border-slate-100">
@@ -720,7 +783,7 @@ export default function AdminPanel() {
                   </div>
                 </div>
               </CardHeader>
-              <CardContent className="p-0">
+              <CardContent className="p-0 overflow-x-auto">
                 <Table>
                   <TableHeader className="bg-slate-50/50">
                     <TableRow className="hover:bg-transparent border-slate-100">
@@ -841,7 +904,7 @@ export default function AdminPanel() {
                   ))}
                 </div>
               </div>
-              <CardContent className="p-0">
+              <CardContent className="p-0 overflow-x-auto">
                 <Table>
                   <TableHeader className="bg-slate-50/50">
                     <TableRow className="hover:bg-transparent border-slate-100">
@@ -956,13 +1019,13 @@ export default function AdminPanel() {
                       onClick={() => setSelectedUser(u)}
                       className="group flex items-center justify-between rounded-xl border border-slate-100 bg-white/50 px-4 py-3 transition-all hover:bg-white hover:shadow-md hover:border-indigo-100 hover:-translate-x-1 cursor-pointer"
                     >
-                      <div className="flex items-center gap-3">
-                        <div className="h-10 w-10 rounded-full bg-indigo-100 flex items-center justify-center text-indigo-700 font-bold text-sm ring-4 ring-white shadow-sm">
+                      <div className="flex items-center gap-3 min-w-0">
+                        <div className="h-10 w-10 shrink-0 rounded-full bg-indigo-100 flex items-center justify-center text-indigo-700 font-bold text-sm ring-4 ring-white shadow-sm">
                           {(u.name || u.email || 'U').charAt(0).toUpperCase()}
                         </div>
-                        <div className="flex flex-col">
-                          <span className="font-semibold text-base text-slate-900">{u.name || u.email}</span>
-                          <span className="text-xs text-slate-500 font-medium">{u.email}</span>
+                        <div className="flex flex-col min-w-0">
+                          <span className="font-semibold text-base text-slate-900 truncate">{u.name || u.email}</span>
+                          <span className="text-xs text-slate-500 font-medium truncate">{u.email}</span>
                         </div>
                       </div>
                       <div className="flex flex-col items-end gap-1">

@@ -26,16 +26,16 @@ export default function LandingPage({ onEnter }: LandingPageProps) {
 
     return (
         <div className="bg-[#FAFAFA] min-h-screen text-[#1a1a1a] font-sans selection:bg-black selection:text-white overflow-x-hidden animate-in fade-in duration-1000">
-            <div className="fixed bottom-10 right-6 md:bottom-12 md:right-12 z-50 animate-in zoom-in duration-1000 delay-700 fill-mode-backwards">
+            <div className="fixed bottom-10 right-6 md:bottom-12 md:right-12 z-[100] animate-in zoom-in duration-1000 delay-700 fill-mode-backwards">
                 <button
                     onClick={onEnter}
-                    className={`group flex items-center gap-0 bg-[#1a1a1a] text-white rounded-full hover:shadow-[0_25px_50px_-12px_rgba(0,0,0,0.4)] transition-all duration-700 cubic-bezier(0.16, 1, 0.3, 1) shadow-2xl border border-white/10 active:scale-95 ${isScrolled ? 'pl-2 pr-2 py-2 md:pl-2.5 md:pr-2.5 md:py-2.5' : 'pl-8 pr-3 py-3 hover:gap-4'}`}
+                    className={`group flex items-center gap-0 bg-[#1a1a1a] text-white rounded-full hover:shadow-[0_25px_50px_-12px_rgba(0,0,0,0.4)] transition-all duration-700 cubic-bezier(0.16, 1, 0.3, 1) shadow-2xl border border-white/10 active:scale-95 ${isScrolled ? 'pl-2 pr-2 py-2 md:pl-2.5 md:pr-2.5 md:py-2.5' : 'pl-6 pr-2 py-2 md:pl-8 md:pr-3 md:py-3 md:hover:gap-4'}`}
                 >
-                    <div className={`overflow-hidden transition-all duration-700 cubic-bezier(0.16, 1, 0.3, 1) ${isScrolled ? 'w-0 opacity-0' : 'w-auto opacity-100 mr-4 group-hover:mr-0'}`}>
+                    <div className={`overflow-hidden transition-all duration-700 cubic-bezier(0.16, 1, 0.3, 1) ${isScrolled ? 'w-0 opacity-0' : 'w-auto opacity-100 mr-3 md:mr-4 md:group-hover:mr-0'}`}>
                         <span className="text-[10px] md:text-xs font-semibold uppercase tracking-[0.3em] whitespace-nowrap">Enter Boutique</span>
                     </div>
 
-                    <div className="w-10 h-10 md:w-11 md:h-11 bg-white text-black rounded-full flex items-center justify-center group-hover:rotate-[-45deg] transition-transform duration-500">
+                    <div className="w-10 h-10 md:w-11 md:h-11 bg-white text-black rounded-full flex items-center justify-center md:group-hover:rotate-[-45deg] transition-transform duration-500">
                         <ArrowRight className="w-4 h-4 md:w-5 md:h-5" strokeWidth={1.5} />
                     </div>
                 </button>
@@ -73,6 +73,12 @@ export default function LandingPage({ onEnter }: LandingPageProps) {
                         <p className="text-lg md:text-2xl text-gray-700 font-light max-w-2xl leading-relaxed">
                             White-glove delivery of coveted whiskies, gins, and champagnes—arriving chilled to your door in under an hour.
                         </p>
+                        <button 
+                            onClick={onEnter}
+                            className="bg-[#1a1a1a] text-white px-8 py-4 rounded-full self-start font-bold uppercase tracking-widest text-xs hover:bg-black transition-all shadow-lg hover:shadow-xl active:scale-95 duration-300 border border-transparent"
+                        >
+                            Shop Collection
+                        </button>
                     </div>
 
                     <div className="hidden md:flex justify-center opacity-20">

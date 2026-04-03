@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
+import Link from 'next/link';
 import { ArrowRight, Zap, ShieldCheck, Globe, Crown } from 'lucide-react';
 import ProductImage from './ProductImage';
 
@@ -239,7 +240,7 @@ export default function LandingPage({ onEnter }: LandingPageProps) {
                             <Zap className="w-6 h-6 text-[#1a1a1a]" strokeWidth={1} />
                         </div>
                         <h4 className="text-2xl font-serif mb-4 text-[#1a1a1a]">Flash Delivery</h4>
-                        <p className="text-gray-500 text-sm leading-relaxed font-light">Chilled and delivered to your doorstep in under 60 minutes across Singapore.</p>
+                        <p className="text-gray-500 text-sm leading-relaxed font-light">Chilled and delivered directly to your doorstep across Singapore.</p>
                     </div>
                     <div className="group">
                         <div className="w-16 h-16 bg-[#F5F5F7] rounded-full flex items-center justify-center mb-8 group-hover:bg-gray-200 transition-colors mx-auto md:mx-0">
@@ -265,9 +266,9 @@ export default function LandingPage({ onEnter }: LandingPageProps) {
                     <span className="font-medium tracking-wide text-gray-500">© 2025 Soora Pte Ltd</span>
                 </div>
                 <div className="flex gap-12 uppercase tracking-[0.2em] font-bold text-gray-500">
-                    <a href="#" className="hover:text-[#1a1a1a] transition-colors">Privacy</a>
-                    <a href="#" className="hover:text-[#1a1a1a] transition-colors">Terms</a>
-                    <a href="#" className="hover:text-[#1a1a1a] transition-colors">Contact</a>
+                    <Link href="#" className="hover:text-[#1a1a1a] transition-colors">Privacy</Link>
+                    <Link href="/terms-and-conditions" className="hover:text-[#1a1a1a] transition-colors">Terms</Link>
+                    <Link href="mailto:hello@sooraaexpress.com" className="hover:text-[#1a1a1a] transition-colors">Contact</Link>
                 </div>
             </footer>
         </div>

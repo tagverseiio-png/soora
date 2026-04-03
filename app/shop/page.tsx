@@ -440,7 +440,7 @@ export default function ShopPage() {
                     <div className="h-full flex flex-col items-center justify-center text-center">
                         <ShoppingBag className="w-12 h-12 text-gray-300 mb-4" />
                         <h3 className="text-[17px] font-semibold text-[#1d1d1f] mb-1">Your bag is empty.</h3>
-                        <p className="text-[14px] text-gray-500 mb-6 max-w-xs">Chilled and delivered to your doorstep in under 60 minutes across Singapore.</p>
+                        <p className="text-[14px] text-gray-500 mb-6 max-w-xs">Chilled and delivered directly to your doorstep across Singapore.</p>
                         <button onClick={() => setIsCartOpen(false)} className="text-[#0071e3] text-[14px] font-medium hover:underline">Continue Shopping</button>
                     </div>
                 ) : (

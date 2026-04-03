@@ -166,7 +166,7 @@ export default function SignupPage() {
           </form>
 
           <p className="mt-6 text-xs text-gray-500 text-center">
-            By creating an account, you agree to our Terms of Service and Privacy Policy.
+            By creating an account, you agree to our <Link href="/terms-and-conditions" className="text-[#0071e3] hover:underline">Terms of Service</Link> and <Link href="#" className="text-[#0071e3] hover:underline">Privacy Policy</Link>.
           </p>
 
           <div className="mt-8 pt-8 border-t border-gray-100">

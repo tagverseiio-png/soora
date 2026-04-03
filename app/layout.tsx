@@ -18,7 +18,7 @@ export const metadata: Metadata = {
   },
 
   description:
-    "Soora Express is Singapore's premium spirits boutique delivering curated fine wines, rare whiskies, champagnes, and artisanal spirits in 60 minutes across Singapore.",
+    "Soora Express is Singapore's premium spirits boutique delivering curated fine wines, rare whiskies, champagnes, and artisanal spirits directly to your doorstep across Singapore.",
 
   applicationName: "Soora Express",
 
@@ -69,7 +69,7 @@ export const metadata: Metadata = {
     siteName: "Soora Express",
     title: "Soora Express — Singapore's Premier Spirits Boutique",
     description:
-      "Curated fine wines, rare whiskies, champagnes, and artisanal spirits delivered in 60 minutes across Singapore.",
+      "Curated fine wines, rare whiskies, champagnes, and artisanal spirits delivered directly to your doorstep across Singapore.",
     images: [
       {
         url: "/favion.ico",
@@ -86,7 +86,7 @@ export const metadata: Metadata = {
     creator: "@sooraaexpress",
     title: "Soora Express — Singapore's Premier Spirits Boutique",
     description:
-      "Premium spirits delivered in 60 minutes across Singapore.",
+      "Premium spirits delivered directly to your doorstep across Singapore.",
     images: ["/favion.ico"],
   },
 

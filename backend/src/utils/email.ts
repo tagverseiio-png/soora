@@ -63,7 +63,7 @@ export const sendPasswordResetEmail = async (email: string, resetUrl: string) =>
           <td class="container" style="font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; font-size: 14px; vertical-align: top; display: block; max-width: 580px; padding: 10px; width: 580px; margin: 0 auto;">
             
             <div class="header" style="padding: 20px 0; text-align: center;">
-              <span style="font-size: 24px; font-weight: bold; color: #111111; letter-spacing: -1px;">Soora SG</span>
+              <span style="font-size: 24px; font-weight: bold; color: #111111; letter-spacing: -1px;">Soora Express</span>
             </div>
 
             <div class="content" style="box-sizing: border-box; display: block; margin: 0 auto; max-width: 580px; padding: 10px;">
@@ -113,7 +113,7 @@ export const sendPasswordResetEmail = async (email: string, resetUrl: string) =>
                 <table role="presentation" border="0" cellpadding="0" cellspacing="0" style="border-collapse: separate; mso-table-lspace: 0pt; mso-table-rspace: 0pt; width: 100%;">
                   <tr>
                     <td class="content-block" style="font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; vertical-align: top; padding-bottom: 10px; padding-top: 10px; color: #999999; font-size: 12px; text-align: center;">
-                      <span class="apple-link" style="color: #999999; font-size: 12px; text-align: center;">Soora SG - Premium Liquor Delivery</span>
+                      <span class="apple-link" style="color: #999999; font-size: 12px; text-align: center;">Soora Express — Soora Pte Ltd</span>
                       <br> Singapore
                     </td>
                   </tr>

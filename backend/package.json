@@ -12,9 +12,8 @@
     "prisma:migrate:deploy": "prisma migrate deploy",
     "prisma:studio": "prisma studio",
     "prisma:push": "prisma db push",
-    "seed": "ts-node prisma/seed.ts",
-    "db:setup": "prisma generate && prisma db push && npm run seed",
-    "db:reset": "prisma migrate reset --force && npm run seed"
+    "db:setup": "prisma generate && prisma db push",
+    "db:reset": "prisma migrate reset --force"
   },
   "keywords": ["liquor", "ecommerce", "singapore", "quick-commerce"],
   "author": "",

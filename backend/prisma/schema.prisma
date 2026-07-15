@@ -6,7 +6,7 @@ generator client {
 }
 
 datasource db {
-  provider = "postgresql"
+  provider = "mongodb"
   url      = env("DATABASE_URL")
 }
 
@@ -40,7 +40,7 @@ enum PaymentMethod {
 }
 
 model User {
-  id            String    @id @default(uuid())
+  id            String    @id @default(uuid()) @map("_id")
   email         String    @unique
   password      String
   name          String?
@@ -64,7 +64,7 @@ model User {
 }
 
 model Address {
-  id            String   @id @default(uuid())
+  id            String   @id @default(uuid()) @map("_id")
   userId        String
   type          String   // Home, Work, Other
   name          String?  // e.g., "Home", "Office"
@@ -89,7 +89,7 @@ model Address {
 }
 
 model Category {
-  id          String    @id @default(uuid())
+  id          String    @id @default(uuid()) @map("_id")
   name        String    @unique
   slug        String    @unique
   description String?
@@ -103,7 +103,7 @@ model Category {
 }
 
 model Product {
-  id          String   @id @default(uuid())
+  id          String   @id @default(uuid()) @map("_id")
   name        String
   brand       String
   slug        String   @unique
@@ -111,7 +111,7 @@ model Product {
   price       Float
   comparePrice Float?  // Original price for sale items
   costPrice   Float?   // For margin calculation
-  sku         String?  @unique
+  sku         String?
   barcode     String?
   
   // Alcohol specific
@@ -148,13 +148,12 @@ model Product {
   reviews     Review[]
   cartItems   CartItem[]
 
-  @@index([slug])
   @@index([category])
   @@index([brand])
 }
 
 model Cart {
-  id        String     @id @default(uuid())
+  id        String     @id @default(uuid()) @map("_id")
   userId    String     @unique
   createdAt DateTime   @default(now())
   updatedAt DateTime   @updatedAt
@@ -164,7 +163,7 @@ model Cart {
 }
 
 model CartItem {
-  id        String   @id @default(uuid())
+  id        String   @id @default(uuid()) @map("_id")
   cartId    String
   productId String
   quantity  Int      @default(1)
@@ -178,7 +177,7 @@ model CartItem {
 }
 
 model Order {
-  id                String        @id @default(uuid())
+  id                String        @id @default(uuid()) @map("_id")
   orderNumber       String        @unique
   userId            String
   
@@ -228,11 +227,10 @@ model Order {
 
   @@index([userId])
   @@index([status])
-  @@index([orderNumber])
 }
 
 model OrderItem {
-  id          String   @id @default(uuid())
+  id          String   @id @default(uuid()) @map("_id")
   orderId     String
   productId   String
   
@@ -253,7 +251,7 @@ model OrderItem {
 }
 
 model Review {
-  id          String   @id @default(uuid())
+  id          String   @id @default(uuid()) @map("_id")
   userId      String
   productId   String
   rating      Int      // 1-5
@@ -272,7 +270,7 @@ model Review {
 }
 
 model DeliveryZone {
-  id              String   @id @default(uuid())
+  id              String   @id @default(uuid()) @map("_id")
   name            String   @unique // e.g., "Central", "East", "West"
   postalCodeStart String
   postalCodeEnd   String
@@ -285,7 +283,7 @@ model DeliveryZone {
 }
 
 model Promotion {
-  id          String   @id @default(uuid())
+  id          String   @id @default(uuid()) @map("_id")
   code        String   @unique
   name        String
   description String?
@@ -301,11 +299,10 @@ model Promotion {
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
-  @@index([code])
 }
 
 model Settings {
-  id    String @id @default(uuid())
+  id    String @id @default(uuid()) @map("_id")
   key   String @unique
   value String
   type  String // STRING, NUMBER, BOOLEAN, JSON

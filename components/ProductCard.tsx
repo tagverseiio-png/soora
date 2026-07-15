@@ -43,7 +43,7 @@ export default function ProductCard({ product, count, onAdd, onRemove }: Product
                     <span className="text-[9px] font-medium text-gray-400">{product.volume}</span>
                 </div>
                 <h3 className="text-[18px] font-serif text-[#1d1d1f] leading-tight mb-2 tracking-tight">{product.name}</h3>
-                <p className="text-[13px] text-gray-500 leading-normal line-clamp-2 font-light">{product.desc}</p>
+                <p className="text-[13px] text-gray-500 leading-normal line-clamp-2 font-light">{product.desc || product.description}</p>
             </div>
             <div className="flex items-center justify-between mt-3">
                 <span className="text-[16px] font-medium text-[#1d1d1f]">S${product.price}</span>
@@ -75,7 +75,7 @@ export default function ProductCard({ product, count, onAdd, onRemove }: Product
                 <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">{product.brand}</p>
             </div>
             <h3 className="text-2xl font-serif text-[#1d1d1f] leading-tight mb-3 tracking-tight">{product.name}</h3>
-            <p className="text-sm text-gray-500 leading-relaxed mb-8 line-clamp-2 font-light">{product.desc}</p>
+            <p className="text-sm text-gray-500 leading-relaxed mb-8 line-clamp-2 font-light">{product.desc || product.description}</p>
 
             <div className="mt-auto pt-6 border-t border-gray-100 flex items-center justify-between">
                 <div>

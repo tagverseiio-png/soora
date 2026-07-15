@@ -105,7 +105,7 @@ export default function ShopPage() {
 
         const run = (async () => {
             try {
-                const response = await apiClient.request('/products');
+                const response = await apiClient.request('/products?limit=100');
                 const list = Array.isArray(response)
                     ? response
                     : (response as any)?.products || [];
@@ -274,7 +274,11 @@ export default function ShopPage() {
     const featuredProducts = products.filter(p => p.isFeatured === true);
     const displayedProducts = activeCategory === 'All'
         ? products
-        : products.filter(p => (p.category || '').toUpperCase() === activeCategory.toUpperCase());
+        : products.filter(p => {
+            const pCat = (p.category || '').replace(/[\s\-_]+/g, '').toUpperCase();
+            const aCat = activeCategory.replace(/[\s\-_]+/g, '').toUpperCase();
+            return pCat === aCat;
+        });
 
     const displayName = user?.name || user?.email || 'User';
     const userInitial = displayName.charAt(0).toUpperCase();

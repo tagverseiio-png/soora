@@ -301,6 +301,7 @@ router.get(
     }
 
     const orders = await prisma.order.findMany({
+      take: 50,
       include: {
         items: {
           include: {

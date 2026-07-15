@@ -137,7 +137,7 @@ export default function AdminPanel() {
         }
 
         // Fetch products - include inactive products for admin
-        const productsRes = await apiClient.request('/products?includeInactive=true');
+        const productsRes = await apiClient.request('/products?includeInactive=true&limit=100');
         const productsList = Array.isArray(productsRes) ? productsRes : (productsRes.products || []);
         setProducts(productsList);
 
@@ -208,7 +208,7 @@ export default function AdminPanel() {
         const matchesSearch = `${item.name} ${item.brand}`
           .toLowerCase()
           .includes(search.toLowerCase());
-        const matchesCategory = category === "All" || item.category === category;
+        const matchesCategory = category === "All" || (item.category || "").toLowerCase() === (category || "").toLowerCase();
         return matchesSearch && matchesCategory;
       }),
     [products, search, category]
@@ -284,7 +284,7 @@ export default function AdminPanel() {
       }
 
       // Refresh products list - include inactive products for admin
-      const response = await apiClient.request('/products?includeInactive=true');
+      const response = await apiClient.request('/products?includeInactive=true&limit=100');
       const productsList = Array.isArray(response) ? response : (response.products || []);
       setProducts(productsList);
 
@@ -308,7 +308,7 @@ export default function AdminPanel() {
       });
 
       // Refresh products list - include inactive products for admin
-      const response = await apiClient.request('/products?includeInactive=true');
+      const response = await apiClient.request('/products?includeInactive=true&limit=100');
       const productsList = Array.isArray(response) ? response : (response.products || []);
       setProducts(productsList);
       
@@ -404,13 +404,13 @@ export default function AdminPanel() {
     <div className="min-h-screen bg-slate-50/50 text-slate-900 font-sans selection:bg-indigo-100">
       {/* Abstract Background Decoration */}
       <div className="fixed inset-0 z-[-1] overflow-hidden pointer-events-none">
-        <div className="absolute top-0 left-1/4 h-96 w-96 rounded-full bg-blue-100/40 blur-3xl" />
-        <div className="absolute bottom-0 right-1/4 h-96 w-96 rounded-full bg-indigo-100/40 blur-3xl" />
+        <div className="absolute top-0 left-1/4 h-96 w-96 rounded-full bg-blue-100/40" />
+        <div className="absolute bottom-0 right-1/4 h-96 w-96 rounded-full bg-indigo-100/40" />
       </div>
 
       <div className="mx-auto flex max-w-[1600px] gap-6 px-4 py-6 md:px-8">
         {/* Sidebar */}
-        <aside className="sticky top-6 hidden h-[calc(100vh-3rem)] w-64 flex-shrink-0 flex-col gap-6 rounded-2xl border border-white/40 bg-white/70 backdrop-blur-xl p-5 shadow-2xl shadow-indigo-100/20 md:flex transition-all hover:bg-white/80">
+        <aside className="sticky top-6 hidden h-[calc(100vh-3rem)] w-64 flex-shrink-0 flex-col gap-6 rounded-2xl border border-white/40 bg-white/70  p-5 shadow-2xl shadow-indigo-100/20 md:flex transition-all hover:bg-white/80">
           <div className="flex items-center gap-3 px-2">
             <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-indigo-600 text-white shadow-lg shadow-indigo-600/20">
               <ShieldCheck className="h-5 w-5" />
@@ -469,7 +469,7 @@ export default function AdminPanel() {
 
         {/* Main Content */}
         <main className="flex-1 space-y-8 min-w-0">
-          <header className="rounded-2xl border border-white/60 bg-white/60 backdrop-blur-md px-8 py-6 shadow-sm">
+          <header className="rounded-2xl border border-white/60 bg-white/60  px-8 py-6 shadow-sm">
             <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
               <div className="flex items-start gap-4">
                 <Sheet open={isMobileMenuOpen} onOpenChange={setIsMobileMenuOpen}>
@@ -478,7 +478,7 @@ export default function AdminPanel() {
                       <Menu className="h-5 w-5 text-slate-600" />
                     </Button>
                   </SheetTrigger>
-                  <SheetContent side="left" className="w-72 p-5 bg-white/95 backdrop-blur-xl border-r border-white/40">
+                  <SheetContent side="left" className="w-72 p-5 bg-white/95  border-r border-white/40">
                     <div className="flex items-center gap-3 mb-8 px-2">
                       <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-indigo-600 text-white shadow-lg shadow-indigo-600/20">
                         <ShieldCheck className="h-5 w-5" />
@@ -541,7 +541,7 @@ export default function AdminPanel() {
                   setCategory("All"); 
                   setLoading(true); 
                   try { 
-                    const productsRes = await apiClient.request('/products?includeInactive=true'); 
+                    const productsRes = await apiClient.request('/products?includeInactive=true&limit=100'); 
                     const productsList = Array.isArray(productsRes) ? productsRes : (productsRes.products || []); 
                     setProducts(productsList); 
                     
@@ -590,7 +590,7 @@ export default function AdminPanel() {
                   { title: "Avg. Order Value", value: `S$${avgOrderValue.toFixed(1)}`, icon: BarChart3, desc: "+2.4% increase", color: "emerald" },
                   { title: "Active Customers", value: activeUsers, icon: UserCheck, desc: "Currently online", color: "violet" }
                 ].map((stat, i) => (
-                  <Card key={i} className="group overflow-hidden border-white/60 bg-white/60 backdrop-blur-sm transition-all hover:-translate-y-1 hover:shadow-xl hover:shadow-indigo-100/40 hover:border-indigo-100">
+                  <Card key={i} className="group overflow-hidden border-white/60 bg-white/60  transition-all hover:-translate-y-1 hover:shadow-xl hover:shadow-indigo-100/40 hover:border-indigo-100">
                     <CardHeader className="flex flex-row items-center justify-between pb-2 space-y-0">
                       <CardDescription className="font-medium text-slate-500">{stat.title}</CardDescription>
                       <div className={`rounded-lg p-2 bg-${stat.color}-50 text-${stat.color}-600`}>
@@ -608,7 +608,7 @@ export default function AdminPanel() {
 
               {/* Inventory Snapshot */}
               <section className="grid gap-6 lg:grid-cols-3">
-                <Card className="lg:col-span-2 border-white/60 bg-white/70 backdrop-blur-md shadow-sm overflow-hidden">
+                <Card className="lg:col-span-2 border-white/60 bg-white/70  shadow-sm overflow-hidden">
                   <CardHeader className="flex flex-col gap-4 border-b border-slate-100/50 bg-white/40 px-6 py-5 md:flex-row md:items-end md:justify-between">
                     <div className="space-y-1">
                       <CardTitle className="flex items-center gap-2">Inventory Snapshot</CardTitle>
@@ -663,7 +663,7 @@ export default function AdminPanel() {
                 </Card>
 
                 <div className="space-y-6">
-                  <Card className="border-white/60 bg-white/70 backdrop-blur-md shadow-sm h-full">
+                  <Card className="border-white/60 bg-white/70  shadow-sm h-full">
                     <CardHeader className="border-b border-slate-100/50 pb-4">
                       <CardTitle>Catalog Health</CardTitle>
                       <CardDescription>Overview of inventory status.</CardDescription>
@@ -691,7 +691,7 @@ export default function AdminPanel() {
 
               {/* Recent Orders Short */}
               <section className="grid gap-6 lg:grid-cols-3">
-                <Card className="lg:col-span-2 border-white/60 bg-white/70 backdrop-blur-md shadow-sm">
+                <Card className="lg:col-span-2 border-white/60 bg-white/70  shadow-sm">
                   <CardHeader className="flex flex-row items-center justify-between border-b border-slate-100/50 bg-white/40 px-6 py-5">
                     <div>
                       <CardTitle>Recent Orders</CardTitle>
@@ -748,7 +748,7 @@ export default function AdminPanel() {
           )}
 
           {activeView === "Products" && (
-            <Card className="border-white/60 bg-white/70 backdrop-blur-md shadow-sm overflow-hidden">
+            <Card className="border-white/60 bg-white/70  shadow-sm overflow-hidden">
               <CardHeader className="flex flex-col gap-4 border-b border-slate-100/50 bg-white/40 px-6 py-5 md:flex-row md:items-end md:justify-between">
                 <div className="space-y-1">
                   <CardTitle className="flex items-center gap-2">All Products</CardTitle>
@@ -864,7 +864,7 @@ export default function AdminPanel() {
           )}
 
           {activeView === "Orders" && (
-            <Card className="border-white/60 bg-white/70 backdrop-blur-md shadow-sm">
+            <Card className="border-white/60 bg-white/70  shadow-sm">
               <CardHeader className="flex flex-col gap-4 border-b border-slate-100/50 bg-white/40 px-6 py-5 md:flex-row md:items-end md:justify-between">
                 <div>
                   <CardTitle>Order Management</CardTitle>
@@ -997,7 +997,7 @@ export default function AdminPanel() {
           )}
 
           {activeView === "Users" && (
-            <Card className="border-white/60 bg-white/70 backdrop-blur-md shadow-sm">
+            <Card className="border-white/60 bg-white/70  shadow-sm">
               <CardHeader className="flex flex-col gap-4 border-b border-slate-100/50 pb-4 md:flex-row md:items-end md:justify-between">
                 <div>
                   <CardTitle>User Management</CardTitle>
@@ -1055,7 +1055,7 @@ export default function AdminPanel() {
           )}
         </main>
         <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
-          <DialogContent className="sm:max-w-md bg-white/90 backdrop-blur-xl border-white/40">
+          <DialogContent className="sm:max-w-md bg-white/90  border-white/40">
             <DialogHeader>
               <DialogTitle>{editingProduct ? "Edit Product" : "Add New Product"}</DialogTitle>
             </DialogHeader>
@@ -1143,7 +1143,7 @@ export default function AdminPanel() {
 
                   <Dialog open={!!selectedOrder} onOpenChange={(open) => !open && setSelectedOrder(null)}>
 
-                    <DialogContent className="max-w-4xl bg-white/95 backdrop-blur-xl border-white/40 shadow-2xl p-0 overflow-hidden gap-0">
+                    <DialogContent className="max-w-4xl bg-white/95  border-white/40 shadow-2xl p-0 overflow-hidden gap-0">
 
                       <DialogHeader className="p-6 pb-4 border-b border-slate-100/50 bg-slate-50/50">
 
@@ -1698,7 +1698,7 @@ export default function AdminPanel() {
                 )}
         {/* Location Picker Dialog */}
         <Dialog open={isLocationDialogOpen} onOpenChange={setIsLocationDialogOpen}>
-          <DialogContent className="sm:max-w-[600px] bg-white/95 backdrop-blur-xl border-white/40 p-0 overflow-hidden shadow-2xl gap-0">
+          <DialogContent className="sm:max-w-[600px] bg-white/95  border-white/40 p-0 overflow-hidden shadow-2xl gap-0">
             <div className="relative h-[200px] bg-slate-100 w-full overflow-hidden group cursor-crosshair">
               {/* Mock Map Background */}
               <div className="absolute inset-0 bg-[url('https://api.mapbox.com/styles/v1/mapbox/streets-v11/static/103.8198,1.3521,11,0/800x400?access_token=pk.eyJ1IjoiZXhhbXBsZSIsImEiOiJjdGdidXdpYmwwMDJnMnlwa2x4YnNrdCJ9.example')] bg-cover bg-center opacity-40 group-hover:opacity-60 transition-opacity"></div>
@@ -1708,7 +1708,7 @@ export default function AdminPanel() {
                   <div className="absolute -bottom-1 left-1/2 -translate-x-1/2 w-8 h-1 bg-black/20 blur-sm rounded-full"></div>
                 </div>
               </div>
-              <div className="absolute top-4 right-4 bg-white/90 backdrop-blur px-3 py-1 rounded-full text-xs font-semibold shadow-sm border border-white/50 text-slate-600">
+              <div className="absolute top-4 right-4 bg-white/90  px-3 py-1 rounded-full text-xs font-semibold shadow-sm border border-white/50 text-slate-600">
                 Singapore
               </div>
             </div>
@@ -1774,7 +1774,7 @@ export default function AdminPanel() {
 
         {selectedUser && (
           <Dialog open={!!selectedUser} onOpenChange={(open) => !open && setSelectedUser(null)}>
-            <DialogContent className="max-w-2xl bg-white/95 backdrop-blur-xl border-white/40 shadow-2xl p-0 overflow-hidden gap-0">
+            <DialogContent className="max-w-2xl bg-white/95  border-white/40 shadow-2xl p-0 overflow-hidden gap-0">
               <DialogHeader className="p-6 pb-4 border-b border-slate-100/50 bg-slate-50/50">
                 <div className="flex items-center gap-4">
                   <div className="h-12 w-12 rounded-full bg-indigo-600 flex items-center justify-center text-white font-bold text-xl shadow-lg">

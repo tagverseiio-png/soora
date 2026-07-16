@@ -51,7 +51,7 @@ model User {
   ageVerified   Boolean   @default(false)
   emailVerified Boolean   @default(false)
   isActive      Boolean   @default(true)
-  resetToken    String?   @unique
+  resetToken    String?
   resetTokenExpiry DateTime?
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt

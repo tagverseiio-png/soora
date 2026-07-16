@@ -47,8 +47,8 @@ export const validators = {
     body('phone')
       .optional({ checkFalsy: true })
       .customSanitizer((val) => typeof val === 'string' ? val.replace(/[\s-()]/g, '') : val)
-      .matches(/^(\+65)?[89]\d{7}$/)
-      .withMessage('Please enter a valid Singapore mobile number (+65 followed by 8 digits starting with 8 or 9)'),
+      .matches(/^\+?[0-9]{7,15}$/)
+      .withMessage('Please enter a valid phone number'),
   ],
 
   // Product validators

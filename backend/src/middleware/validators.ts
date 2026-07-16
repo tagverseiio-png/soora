@@ -17,7 +17,8 @@ export const validators = {
       .isLength({ min: 1 }),
 
     body('phone')
-      .optional()
+      .optional({ checkFalsy: true })
+      .customSanitizer((val) => typeof val === 'string' ? val.replace(/[\s-()]/g, '') : val)
       .matches(/^\+?[0-9]{7,15}$/)
       .withMessage('Please enter a valid phone number'),
 
@@ -45,6 +46,7 @@ export const validators = {
     body('name').optional({ checkFalsy: true }).trim().isLength({ min: 2 }),
     body('phone')
       .optional({ checkFalsy: true })
+      .customSanitizer((val) => typeof val === 'string' ? val.replace(/[\s-()]/g, '') : val)
       .matches(/^(\+65)?[89]\d{7}$/)
       .withMessage('Please enter a valid Singapore mobile number (+65 followed by 8 digits starting with 8 or 9)'),
   ],

@@ -42,9 +42,9 @@ export const validators = {
 
   // Profile validators
   updateProfile: [
-    body('name').optional().trim().isLength({ min: 2 }),
+    body('name').optional({ checkFalsy: true }).trim().isLength({ min: 2 }),
     body('phone')
-      .optional()
+      .optional({ checkFalsy: true })
       .matches(/^(\+65)?[89]\d{7}$/)
       .withMessage('Please enter a valid Singapore mobile number (+65 followed by 8 digits starting with 8 or 9)'),
   ],

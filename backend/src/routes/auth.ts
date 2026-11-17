@@ -1,26 +1,89 @@
 import { Router, Request, Response } from 'express';
 import { prisma } from '../utils/prisma';
-import bcrypt from 'bcryptjs';
-import crypto from 'crypto';
-import jwt, { SignOptions, Secret } from 'jsonwebtoken';
 import { validators } from '../middleware/validators';
 import { validationResult } from 'express-validator';
-import { sendPasswordResetEmail } from '../utils/email';
+import { authenticate, AuthRequest } from '../middleware/auth';
+import { verifyIdToken, extractBearerToken } from '../services/firebaseAuth';
+import { rtdbMultiUpdate } from '../data/rtdb';
+import { serialize, MODELS } from '../data/schema';
+
+/**
+ * Firebase Auth routes.
+ *
+ * Passwords are no longer handled here at all — sign-in, sign-up and password
+ * reset all happen in the browser through the Firebase JS SDK, which talks to
+ * Firebase Auth directly. This file only:
+ *
+ *   POST /register  materialises the RTDB profile for a freshly created
+ *                   Firebase account (idempotent, keyed by the Firebase uid)
+ *   GET  /me        returns the profile for the caller's ID token
+ *
+ * `/login`, `/logout`, `/forgot-password` and `/reset-password` are gone:
+ * there is no server-side session to create or destroy, and password reset is
+ * `sendPasswordResetEmail` + `confirmPasswordReset` on the client.
+ */
 
 const router = Router();
 
-const jwtSecretEnv = process.env.JWT_SECRET;
-if (!jwtSecretEnv) {
-  throw new Error('JWT_SECRET environment variable is not set');
+/** Fields returned to the client. Never includes `password` or reset tokens. */
+const PUBLIC_USER_SELECT = {
+  id: true,
+  email: true,
+  name: true,
+  phone: true,
+  role: true,
+  tier: true,
+  dateOfBirth: true,
+  ageVerified: true,
+  emailVerified: true,
+  isActive: true,
+  createdAt: true,
+} as const;
+
+const MIN_AGE = Number(process.env.MIN_AGE ?? 18);
+/** Average Gregorian year length, matching the original age check. */
+const MS_PER_YEAR = 31557600000;
+
+/** Models that reference a user by uid and must follow a re-key. */
+const USER_CHILD_MODELS = ['address', 'order', 'review', 'cart'] as const;
+
+/**
+ * Moves a profile from one uid to another, re-pointing its children.
+ *
+ * Firebase guarantees one active account per email address, so if a profile
+ * already holds this email under a *different* uid, that uid's Firebase
+ * account no longer exists — an orphan left behind when an account was
+ * deleted without cleaning up the database. Re-keying adopts it for the new
+ * account instead of rejecting the sign-up forever, and preserves the user's
+ * addresses, orders and reviews (which reference `userId`).
+ *
+ * Everything is applied as one atomic multi-path update so the profile can
+ * never be seen half-moved.
+ */
+async function adoptOrphanedProfile(
+  oldUid: string,
+  newUid: string,
+  patch: Record<string, unknown>
+): Promise<void> {
+  const profile = await prisma.user.findUnique({ where: { id: oldUid } });
+  if (!profile) return;
+
+  const updates: Record<string, unknown> = {};
+  updates[`users/${newUid}`] = serialize('user', { ...profile, ...patch });
+  updates[`users/${oldUid}`] = null;
+
+  for (const model of USER_CHILD_MODELS) {
+    const rows = await prisma[model].findMany({ where: { userId: oldUid } });
+    for (const row of rows) {
+      // Leaf writes only — never a parent and its child in the same update.
+      updates[`${MODELS[model].path}/${row.id}/userId`] = newUid;
+    }
+  }
+
+  await rtdbMultiUpdate(updates);
 }
 
-const jwtSecret: Secret = jwtSecretEnv;
-const jwtExpiresIn = process.env.JWT_EXPIRES_IN ?? '7d';
-const jwtSignOptions: SignOptions = {
-  expiresIn: jwtExpiresIn as SignOptions['expiresIn'],
-};
-
-// Register
+// Register — creates the RTDB profile for an existing Firebase account.
 router.post('/register', validators.register, async (req: Request, res: Response) => {
   try {
     const errors = validationResult(req);
@@ -28,125 +91,104 @@ router.post('/register', validators.register, async (req: Request, res: Response
       return res.status(400).json({ errors: errors.array() });
     }
 
-    const { email, password, name, phone, dateOfBirth } = req.body;
-
-    // Check if user exists
-    const existingUser = await prisma.user.findUnique({ where: { email } });
-    if (existingUser) {
-      return res.status(400).json({ error: 'Email already registered' });
-    }
-
-    // Age verification (18+ for alcohol)
-    if (dateOfBirth) {
-      const age = Math.floor((Date.now() - new Date(dateOfBirth).getTime()) / 31557600000);
-      if (age < 18) {
-        return res.status(400).json({ error: 'Must be 18 or older to register' });
-      }
-    }
-
-    // Hash password
-    const hashedPassword = await bcrypt.hash(password, 10);
-
-    // Create user
-    const user = await prisma.user.create({
-      data: {
-        email,
-        password: hashedPassword,
-        name,
-        phone,
-        dateOfBirth: dateOfBirth ? new Date(dateOfBirth) : null,
-        ageVerified: !!dateOfBirth,
-      },
-      select: {
-        id: true,
-        email: true,
-        name: true,
-        phone: true,
-        role: true,
-        tier: true,
-        createdAt: true,
-      },
-    });
-
-    // Generate JWT
-    const token = jwt.sign(
-      { id: user.id, email: user.email, role: user.role },
-      jwtSecret,
-      jwtSignOptions
-    );
-
-    res.status(201).json({ user, token });
-  } catch (error: any) {
-    res.status(500).json({ error: error.message });
-  }
-});
-
-// Login
-router.post('/login', validators.login, async (req: Request, res: Response) => {
-  try {
-    const errors = validationResult(req);
-    if (!errors.isEmpty()) {
-      return res.status(400).json({ errors: errors.array() });
-    }
-
-    const { email, password } = req.body;
-
-    // Find user
-    const user = await prisma.user.findUnique({ where: { email } });
-    if (!user) {
-      return res.status(401).json({ error: 'Invalid credentials' });
-    }
-
-    // Check if active
-    if (!user.isActive) {
-      return res.status(403).json({ error: 'Account is deactivated' });
-    }
-
-    // Verify password
-    const isValidPassword = await bcrypt.compare(password, user.password);
-    if (!isValidPassword) {
-      return res.status(401).json({ error: 'Invalid credentials' });
-    }
-
-    // Generate JWT
-    const token = jwt.sign(
-      { id: user.id, email: user.email, role: user.role },
-      jwtSecret,
-      jwtSignOptions
-    );
-
-    // Return user without password
-    const { password: _, ...userWithoutPassword } = user;
-
-    res.json({ user: userWithoutPassword, token });
-  } catch (error: any) {
-    res.status(500).json({ error: error.message });
-  }
-});
-
-// Get current user
-router.get('/me', async (req: Request, res: Response) => {
-  try {
-    const token = req.headers.authorization?.replace('Bearer ', '');
+    // The client must already be signed in to Firebase — we only verify.
+    const token = extractBearerToken(req.headers.authorization);
     if (!token) {
       return res.status(401).json({ error: 'No token provided' });
     }
 
-    const decoded = jwt.verify(token, jwtSecret) as any;
+    // Mirrors `authenticate`: a token we cannot verify is a 401, not a 500.
+    let verified;
+    try {
+      verified = await verifyIdToken(token);
+    } catch {
+      return res.status(401).json({ error: 'Invalid token' });
+    }
 
-    const user = await prisma.user.findUnique({
-      where: { id: decoded.id },
-      select: {
-        id: true,
-        email: true,
-        name: true,
-        phone: true,
-        role: true,
-        tier: true,
-        ageVerified: true,
-        emailVerified: true,
-        createdAt: true,
+    const email = verified.email;
+    if (!email) {
+      return res.status(400).json({ error: 'Account has no email address' });
+    }
+
+    const { name, phone, dateOfBirth } = req.body;
+
+    // Age verification (MIN_AGE+ for alcohol)
+    if (dateOfBirth) {
+      const age = Math.floor((Date.now() - new Date(dateOfBirth).getTime()) / MS_PER_YEAR);
+      if (age < MIN_AGE) {
+        return res.status(400).json({ error: `Must be ${MIN_AGE} or older to register` });
+      }
+    }
+
+    // Profile fields supplied on this call, applied to a fresh or adopted row.
+    const patch: Record<string, unknown> = { emailVerified: verified.emailVerified };
+    if (name !== undefined) patch.name = name;
+    if (phone !== undefined) patch.phone = phone;
+    if (dateOfBirth !== undefined) {
+      patch.dateOfBirth = new Date(dateOfBirth);
+      patch.ageVerified = true;
+    }
+
+    // Idempotent: a retry (or a second device) must not fail or duplicate.
+    // Also keeps the stored email in sync if it changed in Firebase.
+    const existing = await prisma.user.findUnique({ where: { id: verified.uid } });
+    if (existing) {
+      if (existing.email !== email) {
+        await prisma.user.update({
+          where: { id: verified.uid },
+          data: { email, emailVerified: verified.emailVerified },
+          select: PUBLIC_USER_SELECT,
+        });
+      }
+      const user = await prisma.user.findUnique({
+        where: { id: verified.uid },
+        select: PUBLIC_USER_SELECT,
+      });
+      return res.json({ user });
+    }
+
+    // Uniqueness is a logical constraint — RTDB cannot enforce it — so this
+    // is check-then-create. Firebase itself rejects a second account with the
+    // same email, so a clash here means an orphaned profile: adopt it.
+    const byEmail = await prisma.user.findFirst({ where: { email } });
+    if (byEmail && byEmail.id !== verified.uid) {
+      await adoptOrphanedProfile(byEmail.id, verified.uid, patch);
+      const user = await prisma.user.findUnique({
+        where: { id: verified.uid },
+        select: PUBLIC_USER_SELECT,
+      });
+      if (!user) {
+        return res.status(500).json({ error: 'Failed to create profile' });
+      }
+      return res.json({ user });
+    }
+
+    const user = await prisma.user.create({
+      data: {
+        // Key the profile by the Firebase uid so `authenticate` can resolve it.
+        id: verified.uid,
+        email,
+        ...patch,
       },
+      select: PUBLIC_USER_SELECT,
+    });
+
+    res.status(201).json({ user });
+  } catch (error: any) {
+    if (error?.code === 'P2002') {
+      return res.status(400).json({ error: 'Email already registered' });
+    }
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Get current user — profile is looked up fresh on every call so role changes
+// (e.g. a demotion) take effect immediately.
+router.get('/me', authenticate, async (req: AuthRequest, res: Response) => {
+  try {
+    const user = await prisma.user.findUnique({
+      where: { id: req.user!.id },
+      select: PUBLIC_USER_SELECT,
     });
 
     if (!user) {
@@ -155,103 +197,7 @@ router.get('/me', async (req: Request, res: Response) => {
 
     res.json(user);
   } catch (error: any) {
-    res.status(401).json({ error: 'Invalid token' });
-  }
-});
-
-// Logout
-router.post('/logout', async (_req: Request, res: Response) => {
-  res.json({ message: 'Logged out successfully' });
-});
-
-// Forgot Password
-router.post('/forgot-password', validators.forgotPassword, async (req: Request, res: Response) => {
-  try {
-    const errors = validationResult(req);
-    if (!errors.isEmpty()) {
-      return res.status(400).json({ errors: errors.array() });
-    }
-
-    const { email } = req.body;
-    const user = await prisma.user.findUnique({ where: { email } });
-
-    if (!user) {
-      // Return 200 even if user not found for security
-      return res.status(200).json({ message: 'If an account with that email exists, we have sent a reset link.' });
-    }
-
-    // Generate token
-    const resetToken = crypto.randomBytes(32).toString('hex');
-    const hashedToken = crypto.createHash('sha256').update(resetToken).digest('hex');
-    
-    // Set expiry (1 hour)
-    const expiry = new Date(Date.now() + 3600000);
-
-    // Save to DB
-    await prisma.user.update({
-      where: { id: user.id },
-      data: {
-        resetToken: hashedToken,
-        resetTokenExpiry: expiry,
-      },
-    });
-
-    // Send email
-    const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3000';
-    const resetUrl = `${frontendUrl}/reset-password?token=${resetToken}`;
-
-    await sendPasswordResetEmail(user.email, resetUrl);
-
-    res.json({ message: 'If an account with that email exists, we have sent a reset link.' });
-  } catch (error: any) {
-    console.error('Forgot password error:', error);
-    res.status(500).json({ error: 'Server error occurred' });
-  }
-});
-
-// Reset Password
-router.post('/reset-password', validators.resetPassword, async (req: Request, res: Response) => {
-  try {
-    const errors = validationResult(req);
-    if (!errors.isEmpty()) {
-      return res.status(400).json({ errors: errors.array() });
-    }
-
-    const { token, password } = req.body;
-
-    // Hash the token provided in the URL to compare with DB
-    const hashedToken = crypto.createHash('sha256').update(token).digest('hex');
-
-    const user = await prisma.user.findFirst({
-      where: {
-        resetToken: hashedToken,
-        resetTokenExpiry: {
-          gt: new Date(),
-        },
-      },
-    });
-
-    if (!user) {
-      return res.status(400).json({ error: 'Invalid or expired reset token' });
-    }
-
-    // Hash new password
-    const hashedPassword = await bcrypt.hash(password, 10);
-
-    // Update user and clear token
-    await prisma.user.update({
-      where: { id: user.id },
-      data: {
-        password: hashedPassword,
-        resetToken: null,
-        resetTokenExpiry: null,
-      },
-    });
-
-    res.json({ message: 'Password has been reset successfully. You can now log in.' });
-  } catch (error: any) {
-    console.error('Reset password error:', error);
-    res.status(500).json({ error: 'Server error occurred' });
+    res.status(500).json({ error: error.message });
   }
 });
 

@@ -19,15 +19,23 @@ export const apiClient = {
   async request<T = any>(endpoint: string, options: RequestInit = {}): Promise<T> {
     const url = `${this.baseUrl}${endpoint}`;
 
-    // Inject auth token automatically
+    // Inject the caller's Firebase ID token automatically.
+    //
+    // Tokens are fetched (and transparently refreshed) from the Firebase SDK
+    // rather than read from localStorage: ID tokens last ~1 hour, so caching
+    // one would break long-lived sessions. A dynamic import keeps the Firebase
+    // SDK out of any server-side bundle.
     const headers: Record<string, string> = {
       'Content-Type': 'application/json',
       ...(options.headers as Record<string, string> || {}),
     };
     try {
-      const token = typeof window !== 'undefined' ? localStorage.getItem('auth_token') : null;
-      if (token && !headers['Authorization']) {
-        headers['Authorization'] = `Bearer ${token}`;
+      if (typeof window !== 'undefined' && !headers['Authorization']) {
+        const { getFirebaseIdToken } = await import('./firebase');
+        const token = await getFirebaseIdToken();
+        if (token) {
+          headers['Authorization'] = `Bearer ${token}`;
+        }
       }
     } catch (_) {}
 
@@ -56,11 +64,9 @@ export const apiClient = {
       let errorMessage = response.statusText || 'Request failed';
       let errorData: any = undefined;
       if (response.status === 401) {
-        try {
-          if (typeof window !== 'undefined') {
-            localStorage.removeItem('auth_token');
-          }
-        } catch (_) {}
+        // Don't clear anything here: a 401 can mean "token expired mid-flight"
+        // as well as "signed out". AuthContext reacts to the thrown error and
+        // decides whether to end the session.
         // Prefer a clear message for auth failures
         errorMessage = 'Unauthorized. Please log in again.';
       }

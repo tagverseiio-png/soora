@@ -4,12 +4,14 @@ import { useState, useEffect } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { Lock, AlertCircle, CheckCircle2, Eye, EyeOff } from 'lucide-react';
-import { authApi, handleApiError } from '@/lib/api';
+import { confirmPasswordReset, verifyPasswordResetCode } from 'firebase/auth';
+import { firebaseAuth, firebaseAuthErrorMessage } from '@/lib/firebase';
 
 export default function ResetPasswordPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const token = searchParams.get('token');
+  // Firebase's reset email links here with `oobCode` (not `token`).
+  const oobCode = searchParams.get('oobCode');
 
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
@@ -17,16 +19,35 @@ export default function ResetPasswordPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState(false);
+  const [codeEmail, setCodeEmail] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!token) {
-      setError('Invalid or missing reset token.');
+    if (!oobCode) {
+      setError('Invalid or missing reset link.');
+      return;
     }
-  }, [token]);
+
+    // Optional: surface which account the link belongs to, and fail fast with
+    // a clear message if the code is expired/invalid rather than after submit.
+    let cancelled = false;
+    (async () => {
+      if (!firebaseAuth) return;
+      try {
+        const email = await verifyPasswordResetCode(firebaseAuth, oobCode);
+        if (!cancelled) setCodeEmail(email);
+      } catch (err) {
+        if (!cancelled) setError(firebaseAuthErrorMessage(err));
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [oobCode]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!token) return;
+    if (!oobCode) return;
 
     if (password !== confirmPassword) {
       return setError('Passwords do not match');
@@ -40,14 +61,17 @@ export default function ResetPasswordPage() {
     setError('');
 
     try {
-      await authApi.resetPassword(token, password);
+      if (!firebaseAuth) {
+        throw new Error('Authentication is not configured');
+      }
+      await confirmPasswordReset(firebaseAuth, oobCode, password);
       setSuccess(true);
       // Redirect after 3 seconds
       setTimeout(() => {
         router.push('/login');
       }, 3000);
     } catch (err: any) {
-      setError(handleApiError(err));
+      setError(firebaseAuthErrorMessage(err));
     } finally {
       setLoading(false);
     }
@@ -63,6 +87,7 @@ export default function ResetPasswordPage() {
           <h1 className="text-3xl font-serif text-[#1a1a1a] mb-3 tracking-tight">New password</h1>
           <p className="text-gray-500 font-light">
             Please enter your new password below.
+            {codeEmail ? ` Resetting the password for ${codeEmail}.` : ''}
           </p>
         </div>
 
@@ -136,7 +161,7 @@ export default function ResetPasswordPage() {
 
             <button
               type="submit"
-              disabled={loading || !token}
+              disabled={loading || !oobCode}
               className="w-full bg-[#1a1a1a] text-white py-4 rounded-xl font-semibold text-[15px] hover:bg-black transition-all disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {loading ? 'Updating password...' : 'Reset password'}

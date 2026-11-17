@@ -325,7 +325,7 @@ router.get(
       },
     });
 
-    const totalRevenue = orders.reduce((sum, order) => sum + order.total, 0);
+    const totalRevenue = orders.reduce((sum: number, order: any) => sum + order.total, 0);
     const totalOrders = orders.length;
     const averageOrderValue = totalRevenue / totalOrders || 0;
 

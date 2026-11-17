@@ -1,5 +1,5 @@
 import { Router, Response } from 'express';
-import { Prisma } from '@prisma/client';
+import { Prisma } from '../utils/prisma';
 import { authenticate, AuthRequest } from '../middleware/auth';
 import { validators } from '../middleware/validators';
 import { validationResult } from 'express-validator';

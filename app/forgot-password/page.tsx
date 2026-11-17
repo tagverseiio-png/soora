@@ -3,7 +3,8 @@
 import { useState } from 'react';
 import Link from 'next/link';
 import { ArrowLeft, Mail, AlertCircle, CheckCircle2 } from 'lucide-react';
-import { authApi, handleApiError } from '@/lib/api';
+import { sendPasswordResetEmail } from 'firebase/auth';
+import { firebaseAuth, firebaseAuthErrorMessage } from '@/lib/firebase';
 
 export default function ForgotPasswordPage() {
   const [email, setEmail] = useState('');
@@ -18,10 +19,15 @@ export default function ForgotPasswordPage() {
     setSuccess(false);
 
     try {
-      await authApi.forgotPassword(email);
+      if (!firebaseAuth) {
+        throw new Error('Authentication is not configured');
+      }
+      // Firebase emails the link itself — there is no backend endpoint for
+      // this any more. The link lands on /reset-password with an `oobCode`.
+      await sendPasswordResetEmail(firebaseAuth, email);
       setSuccess(true);
     } catch (err: any) {
-      setError(handleApiError(err));
+      setError(firebaseAuthErrorMessage(err));
     } finally {
       setLoading(false);
     }

@@ -2,14 +2,15 @@ import { body, param, query, ValidationChain } from 'express-validator';
 
 export const validators = {
   // Auth validators
+  // Sign-up completes in Firebase Auth on the client; the backend only
+  // verifies the resulting ID token. `email` and `password` therefore come
+  // from the token, not the body — only the optional profile fields are
+  // validated here. Firebase enforces its own password rules.
   register: [
     body('email')
+      .optional()
       .isEmail()
       .normalizeEmail(),
-
-    body('password')
-      .isLength({ min: 6 })
-      .withMessage('Password must be at least 6 characters'),
 
     body('name')
       .optional()
@@ -25,20 +26,6 @@ export const validators = {
     body('dateOfBirth')
       .optional()
       .isDate(),
-  ],
-
-  login: [
-    body('email').isEmail().normalizeEmail(),
-    body('password').notEmpty(),
-  ],
-
-  forgotPassword: [
-    body('email').isEmail().normalizeEmail().withMessage('Please provide a valid email'),
-  ],
-
-  resetPassword: [
-    body('token').notEmpty().withMessage('Reset token is required'),
-    body('password').isLength({ min: 6 }).withMessage('Password must be at least 6 characters'),
   ],
 
   // Profile validators

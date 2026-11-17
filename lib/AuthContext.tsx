@@ -1,7 +1,14 @@
 'use client';
 
 import { createContext, useContext, useEffect, useState, useRef, useCallback } from 'react';
-import { authApi, handleApiError, type User, type AuthResponse, usersApi, type Address } from './api';
+import {
+  signInWithEmailAndPassword,
+  createUserWithEmailAndPassword,
+  signOut as firebaseSignOut,
+  onAuthStateChanged,
+} from 'firebase/auth';
+import { authApi, handleApiError, type User, usersApi, type Address } from './api';
+import { firebaseAuth } from './firebase';
 
 type AuthContextType = {
   user: User | null;
@@ -50,29 +57,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const addressesInFlight = useRef<Promise<void> | null>(null);
   const addressesCooldownUntil = useRef<number>(0);
 
-  useEffect(() => {
-    checkSession();
-  }, []);
-
-  const checkSession = async () => {
-    try {
-      const token = localStorage.getItem('auth_token');
-      if (token) {
-        const userData = await authApi.getCurrentUser();
-        setUser(userData);
-        setError(null);
-        // Fetch addresses now that we have a user
-        await fetchAddresses();
-      }
-    } catch (err) {
-      localStorage.removeItem('auth_token');
-      setUser(null);
-      setError(null); // Silent fail on initial check
-    } finally {
-      setLoading(false);
-    }
-  };
-
   const fetchAddresses = useCallback(async () => {
     const now = Date.now();
     if (addressesCooldownUntil.current && now < addressesCooldownUntil.current) {
@@ -107,6 +91,59 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     return run;
   }, []);
 
+  /**
+   * Loads the backend profile for the currently signed-in Firebase user.
+   * Returns false when there is no usable profile (signed out, or the
+   * account exists in Firebase but has no RTDB record yet).
+   */
+  const loadProfile = useCallback(async (): Promise<boolean> => {
+    try {
+      const userData = await authApi.getCurrentUser();
+      setUser(userData);
+      setError(null);
+      await fetchAddresses();
+      return true;
+    } catch (err) {
+      setUser(null);
+      setAddresses([]);
+      setSelectedAddress(null);
+      setError(null); // Silent: this is the normal signed-out path
+      return false;
+    }
+  }, [fetchAddresses]);
+
+  // Restore the session on mount.
+  //
+  // `onAuthStateChanged` is Firebase's own persistence listener: it fires with
+  // the restored user (or null) as soon as the SDK has hydrated its state, so
+  // we never have to guess from localStorage whether someone is signed in.
+  useEffect(() => {
+    if (!firebaseAuth) {
+      setLoading(false);
+      return;
+    }
+
+    let cancelled = false;
+
+    const unsubscribe = onAuthStateChanged(firebaseAuth, async (fbUser) => {
+      if (cancelled) return;
+      if (fbUser) {
+        await loadProfile();
+      } else {
+        setUser(null);
+        setAddresses([]);
+        setSelectedAddress(null);
+      }
+      if (!cancelled) setLoading(false);
+    });
+
+    return () => {
+      cancelled = true;
+      unsubscribe();
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   const refreshUser = async () => {
     try {
       const userData = await authApi.getCurrentUser();
@@ -116,20 +153,25 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     } catch (err) {
       const message = handleApiError(err);
       setError(message);
-      localStorage.removeItem('auth_token');
       setUser(null);
+      setAddresses([]);
+      setSelectedAddress(null);
     }
   };
 
   const signIn = async (email: string, password: string) => {
+    if (!firebaseAuth) {
+      throw new Error('Authentication is not configured');
+    }
     try {
       setError(null);
       setLoading(true);
-      const response: AuthResponse = await authApi.login(email, password);
-      localStorage.setItem('auth_token', response.token);
-      setUser(response.user);
+      await signInWithEmailAndPassword(firebaseAuth, email, password);
+      // onAuthStateChanged will also fire, but awaiting here means `signIn`
+      // only resolves once `user` is populated for the caller.
+      await loadProfile();
     } catch (err) {
-      const message = handleApiError(err);
+      const message = handleFirebaseError(err);
       setError(message);
       throw new Error(message);
     } finally {
@@ -138,12 +180,32 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   };
 
   const signUp = async (email: string, password: string, data?: any) => {
+    if (!firebaseAuth) {
+      throw new Error('Authentication is not configured');
+    }
     try {
       setError(null);
       setLoading(true);
-      const response: AuthResponse = await authApi.register(email, password, data);
-      localStorage.setItem('auth_token', response.token);
-      setUser(response.user);
+
+      const credential = await createUserWithEmailAndPassword(firebaseAuth, email, password);
+
+      try {
+        // Firebase account now exists — materialise the backend profile,
+        // keyed by the new uid. The ID token identifies the caller.
+        await authApi.register(data);
+      } catch (err) {
+        // Roll the Firebase account back so a validation failure (underage,
+        // bad phone, duplicate email) doesn't leave an account that can never
+        // sign in. The user can then retry with the same address.
+        try {
+          await credential.user.delete();
+        } catch {
+          /* best effort */
+        }
+        throw err;
+      }
+
+      await loadProfile();
     } catch (err) {
       const message = handleApiError(err);
       setError(message);
@@ -155,17 +217,22 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const signOut = async () => {
     try {
-      await authApi.logout();
+      if (firebaseAuth) {
+        await firebaseSignOut(firebaseAuth);
+      }
     } catch (err) {
       // Ignore logout errors
     } finally {
-      localStorage.removeItem('auth_token');
       setUser(null);
+      setAddresses([]);
+      setSelectedAddress(null);
       setError(null);
     }
   };
 
-  const isAuthenticated = !!user && !!localStorage.getItem('auth_token');
+  // Derived from real auth state, not a localStorage flag: Firebase keeps its
+  // own persisted session, and `user` only exists once the profile loaded.
+  const isAuthenticated = !!user;
 
   return (
     <AuthContext.Provider 
@@ -187,4 +254,35 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       {children}
     </AuthContext.Provider>
   );
+}
+
+/**
+ * Maps Firebase Auth error codes to the human-readable messages the login and
+ * sign-up forms already display. Unknown codes fall back to the API's own
+ * message handling so backend errors (age check, duplicate email) pass through.
+ */
+function handleFirebaseError(err: unknown): string {
+  const code = (err as any)?.code;
+  switch (code) {
+    case 'auth/invalid-email':
+      return 'Please enter a valid email address';
+    case 'auth/user-disabled':
+      return 'This account has been disabled';
+    case 'auth/user-not-found':
+    case 'auth/wrong-password':
+    case 'auth/invalid-credential':
+      return 'Invalid credentials';
+    case 'auth/email-already-in-use':
+      return 'Email already registered';
+    case 'auth/weak-password':
+      return 'Password must be at least 6 characters';
+    case 'auth/too-many-requests':
+      return 'Too many attempts. Please try again later';
+    case 'auth/network-request-failed':
+      return 'Network error. Please check your connection';
+    case 'auth/operation-not-allowed':
+      return 'Email/password sign-in is not enabled for this project';
+    default:
+      return handleApiError(err);
+  }
 }

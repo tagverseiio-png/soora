@@ -15,11 +15,6 @@ export interface User {
   createdAt: string;
 }
 
-export interface AuthResponse {
-  user: User;
-  token: string;
-}
-
 export interface PaginationInfo {
   page: number;
   limit: number;
@@ -79,38 +74,29 @@ export interface CreateOrderResponse {
 
 /**
  * Authentication API
+ *
+ * Sign-in, sign-up and password reset are handled entirely by the Firebase
+ * JS SDK (see `AuthContext` / the reset pages) — they never touch this API.
+ * What remains is the profile side: the backend verifies the caller's
+ * Firebase ID token (attached automatically by `apiClient`) and reads or
+ * creates the matching RTDB record.
  */
 export const authApi = {
-  async login(email: string, password: string): Promise<AuthResponse> {
-    return apiClient.post<AuthResponse>('/auth/login', { email, password });
-  },
-
-  async register(
-    email: string,
-    password: string,
-    data?: { name?: string; phone?: string; dateOfBirth?: string }
-  ): Promise<AuthResponse> {
-    return apiClient.post<AuthResponse>('/auth/register', {
-      email,
-      password,
-      ...data,
-    });
+  /**
+   * Creates the backend profile for an account that Firebase Auth has already
+   * created. Must be called while signed in — the ID token is the identity.
+   */
+  async register(data?: {
+    name?: string;
+    phone?: string;
+    dateOfBirth?: string;
+  }): Promise<User> {
+    const res = await apiClient.post<{ user: User }>('/auth/register', data ?? {});
+    return res.user;
   },
 
   async getCurrentUser(): Promise<User> {
     return apiClient.get<User>('/auth/me');
-  },
-
-  async logout(): Promise<{ message: string }> {
-    return apiClient.post<{ message: string }>('/auth/logout', {});
-  },
-
-  async forgotPassword(email: string): Promise<{ message: string }> {
-    return apiClient.post<{ message: string }>('/auth/forgot-password', { email });
-  },
-
-  async resetPassword(token: string, password: string): Promise<{ message: string }> {
-    return apiClient.post<{ message: string }>('/auth/reset-password', { token, password });
   },
 };
 

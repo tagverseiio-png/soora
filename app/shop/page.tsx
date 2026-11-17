@@ -16,7 +16,7 @@ import { reverseGeocode } from '@/lib/utils';
 import HeroImage from '@/components/HeroImage';
 
 export default function ShopPage() {
-    const { user, signOut, selectedAddress, addresses, setSelectedAddress, fetchAddresses, refreshUser } = useAuth();
+    const { user, isAuthenticated, signOut, selectedAddress, addresses, setSelectedAddress, fetchAddresses, refreshUser } = useAuth();
     const router = useRouter();
     const [cart, setCart] = useState<Product[]>([]);
     const [isCartOpen, setIsCartOpen] = useState(false);
@@ -897,8 +897,9 @@ export default function ShopPage() {
                             <div className="flex gap-3">
                                 <button
                                     onClick={async () => {
-                                        const token = typeof window !== 'undefined' ? localStorage.getItem('auth_token') : null;
-                                        if (!user || !token) {
+                                        // Identity comes from the auth context —
+                                        // the API attaches the Firebase ID token.
+                                        if (!user || !isAuthenticated) {
                                             alert('Please log in to save an address');
                                             router.push('/login');
                                             return;

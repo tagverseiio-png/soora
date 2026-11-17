@@ -1,25 +1,28 @@
-import { PrismaClient } from '@prisma/client';
+/**
+ * Compatibility shim.
+ *
+ * The routes import `prisma` from here, and that contract is unchanged —
+ * only the engine underneath moved from `@prisma/client` (MongoDB) to the
+ * Firebase RTDB client in `../data/client`.
+ *
+ * `Prisma` is re-exported as a type-only namespace for the few places that
+ * annotate with Prisma's input types (e.g. `Prisma.OrderItemCreateWithoutOrderInput`).
+ */
+export { prisma } from '../data/client';
 
-// Ensure a single Prisma client instance across the app
-// In dev, reuse the instance via globalThis to avoid exhausting connections
-declare global {
-  // eslint-disable-next-line no-var
-  var prisma: PrismaClient | undefined;
+/** Type-only stand-in for the `Prisma` namespace previously exported by `@prisma/client`. */
+export namespace Prisma {
+  export type OrderItemCreateWithoutOrderInput = {
+    id?: string;
+    orderId?: string;
+    productId?: string;
+    productName: string;
+    brand?: string | null;
+    volume?: string | null;
+    price: number;
+    quantity: number;
+    subtotal: number;
+    product?: { connect: { id: string } };
+    createdAt?: Date | string;
+  };
 }
-
-export const prisma: PrismaClient = global.prisma || new PrismaClient({
-  log: ['warn', 'error'],
-});
-
-if (process.env.NODE_ENV !== 'production') {
-  global.prisma = prisma;
-}
-
-// Graceful shutdown
-process.on('beforeExit', async () => {
-  try {
-    await prisma.$disconnect();
-  } catch (e) {
-    // ignore
-  }
-});

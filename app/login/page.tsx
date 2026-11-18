@@ -20,8 +20,9 @@ export default function LoginPage() {
     setError('');
 
     try {
-      await signIn(email, password);
-      router.push('/shop');
+      const signedIn = await signIn(email, password);
+      // Admins land on the dashboard; everyone else continues to the shop.
+      router.push(signedIn?.role === 'ADMIN' ? '/admin' : '/shop');
     } catch (err: any) {
       setError(err?.message || 'Failed to sign in. Please try again.');
     } finally {

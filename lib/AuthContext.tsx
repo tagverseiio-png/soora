@@ -17,7 +17,7 @@ type AuthContextType = {
   isAuthenticated: boolean;
   selectedAddress: Address | null;
   addresses: Address[];
-  signIn: (email: string, password: string) => Promise<void>;
+  signIn: (email: string, password: string) => Promise<User | null>;
   signOut: () => Promise<void>;
   signUp: (email: string, password: string, data?: any) => Promise<void>;
   refreshUser: () => Promise<void>;
@@ -32,7 +32,7 @@ const AuthContext = createContext<AuthContextType>({
   isAuthenticated: false,
   selectedAddress: null,
   addresses: [],
-  signIn: async () => {},
+  signIn: async () => null,
   signOut: async () => {},
   signUp: async () => {},
   refreshUser: async () => {},
@@ -93,22 +93,22 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   /**
    * Loads the backend profile for the currently signed-in Firebase user.
-   * Returns false when there is no usable profile (signed out, or the
+   * Returns null when there is no usable profile (signed out, or the
    * account exists in Firebase but has no RTDB record yet).
    */
-  const loadProfile = useCallback(async (): Promise<boolean> => {
+  const loadProfile = useCallback(async (): Promise<User | null> => {
     try {
       const userData = await authApi.getCurrentUser();
       setUser(userData);
       setError(null);
       await fetchAddresses();
-      return true;
+      return userData;
     } catch (err) {
       setUser(null);
       setAddresses([]);
       setSelectedAddress(null);
       setError(null); // Silent: this is the normal signed-out path
-      return false;
+      return null;
     }
   }, [fetchAddresses]);
 
@@ -169,7 +169,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       await signInWithEmailAndPassword(firebaseAuth, email, password);
       // onAuthStateChanged will also fire, but awaiting here means `signIn`
       // only resolves once `user` is populated for the caller.
-      await loadProfile();
+      return await loadProfile();
     } catch (err) {
       const message = handleFirebaseError(err);
       setError(message);
